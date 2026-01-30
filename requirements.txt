@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+jinja2
+anthropic
+sqlalchemy
+aiosqlite
+pandas
+pymorphy3
+python-dotenv
+passlib
+python-jose
+bcrypt
