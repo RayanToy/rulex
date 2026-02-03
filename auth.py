@@ -1,21 +1,30 @@
-from passlib.context import CryptContext
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
-import secrets
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 sessions = {}
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Хеширование пароля через SHA256"""
+    salt = secrets.token_hex(16)
+    pwd_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+    return f"{salt}${pwd_hash}"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """Проверка пароля"""
+    try:
+        salt, pwd_hash = hashed_password.split('$')
+        check_hash = hashlib.sha256((plain_password + salt).encode()).hexdigest()
+        return check_hash == pwd_hash
+    except:
+        return False
 
 
 def create_session(user_id: int) -> str:
+    """Создание сессии"""
     token = secrets.token_urlsafe(32)
     sessions[token] = {
         "user_id": user_id,
@@ -26,6 +35,7 @@ def create_session(user_id: int) -> str:
 
 
 def get_session(token: str) -> Optional[dict]:
+    """Получение сессии"""
     if token not in sessions:
         return None
     session = sessions[token]
@@ -36,11 +46,13 @@ def get_session(token: str) -> Optional[dict]:
 
 
 def delete_session(token: str):
+    """Удаление сессии"""
     if token in sessions:
         del sessions[token]
 
 
 def get_user_id_from_token(token: str) -> Optional[int]:
+    """Получение user_id из токена"""
     session = get_session(token)
     if session:
         return session["user_id"]
