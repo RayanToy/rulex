@@ -12,7 +12,6 @@ morph = pymorphy3.MorphAnalyzer()
 
 
 class QuestionGenerator:
-    
     def __init__(self):
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -37,30 +36,49 @@ class QuestionGenerator:
         return response.content[0].text.strip()
     
     def get_distractors(self, word: str) -> List[str]:
+        """Получение дистракторов"""
         pos = self._get_part_of_speech(word)
         pos_map = {
-            "NOUN": "существительное",
-            "VERB": "глагол",
-            "INFN": "инфинитив",
-            "ADJF": "прилагательное"
+        "NOUN": "существительное",
+        "VERB": "глагол",
+        "INFN": "инфинитив",
+        "ADJF": "прилагательное"
         }
         pos_rus = pos_map.get(pos, "существительное")
-        
-        prompt = f"Найди 8 похожих по смыслу слов для '{word}' ({pos_rus}). Не однокоренные, одно слово каждое. Выпиши через запятую:"
-        
+    
+        prompt = f"""Напиши 8 слов, связанных с темой слова '{word}' ({pos_rus}).
+
+Требования:
+- НЕ синонимы слова '{word}'
+- НЕ однокоренные со словом '{word}'
+- Из той же предметной области, но с ДРУГИМ значением
+- Одно слово каждое
+- Та же часть речи ({pos_rus})
+
+Например, для слова "врач" подойдут: пациент, больница, лекарство (связаны по теме, но не синонимы).
+
+Напиши только слова через запятую, без пояснений:"""
+    
         response = self._call_llm(prompt)
-        
-        words = [w.strip().lower().rstrip('.') for w in response.split(',')]
-        
+    
+        # Убираем вводный текст если есть
+        if ':' in response:
+            response = response.split(':', 1)[-1]
+    
+        response = response.strip().strip('.').strip()
+    
+        words = [w.strip().lower().rstrip('.').rstrip(',') for w in response.split(',')]
+    
         valid = []
         for w in words:
             w = w.strip()
             if not w or w == word.lower() or '-' in w or len(w) < 2:
                 continue
+            if not w.isalpha():
+                continue
             w_pos = self._get_part_of_speech(w)
             if w_pos == pos:
                 valid.append(w)
-        
         return valid[:3]
     
     def get_definition(self, word: str, distractors: List[str]) -> str:
