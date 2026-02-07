@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -15,6 +15,11 @@ class User(Base):
     full_name = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    
+    # Уровень ученика
+    grade = Column(Integer, default=6)  # Класс ученика (4-7)
+    current_level = Column(String(20), default="medium")  # low, medium, high
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
     
@@ -24,7 +29,9 @@ class User(Base):
             "username": self.username,
             "email": self.email,
             "full_name": self.full_name,
-            "is_admin": self.is_admin
+            "is_admin": self.is_admin,
+            "grade": self.grade,
+            "current_level": self.current_level
         }
 
 
@@ -38,7 +45,12 @@ class Question(Base):
     distractor_1 = Column(String(100), nullable=True)
     distractor_2 = Column(String(100), nullable=True)
     distractor_3 = Column(String(100), nullable=True)
-    word_class = Column(Integer, default=6)
+    
+    # Классификация слова
+    word_class = Column(Integer, default=6)  # Для какого класса (4-7)
+    frequency_type = Column(String(20), default="medium")  # high, medium, low
+    difficulty = Column(Integer, default=5)  # 1-10 сложность
+    
     part_of_speech = Column(String(20), nullable=True)
     is_approved = Column(Boolean, default=False)
     generation_log = Column(Text, nullable=True)
@@ -62,6 +74,8 @@ class Question(Base):
             "correct": 0,
             "target_word": self.target_word,
             "word_class": self.word_class,
+            "frequency_type": self.frequency_type,
+            "difficulty": self.difficulty,
             "part_of_speech": self.part_of_speech
         }
 
@@ -70,10 +84,47 @@ class TestResult(Base):
     __tablename__ = "test_results"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False, index=True)
+    
+    # Результаты
     score = Column(Integer, nullable=False)
     total_questions = Column(Integer, nullable=False)
+    percentage = Column(Float, nullable=False)
+    
+    # Детали по частотности
+    high_freq_correct = Column(Integer, default=0)
+    high_freq_total = Column(Integer, default=0)
+    medium_freq_correct = Column(Integer, default=0)
+    medium_freq_total = Column(Integer, default=0)
+    low_freq_correct = Column(Integer, default=0)
+    low_freq_total = Column(Integer, default=0)
+    
+    # Оценка
+    grade_tested = Column(Integer, nullable=False)  # Какой класс тестировали
+    level_achieved = Column(String(20), nullable=False)  # low, medium, high
+    max_difficulty_reached = Column(Integer, default=5)
+    
+    # Рекомендация
+    recommendation = Column(Text, nullable=True)
+    
     completed_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TestAnswer(Base):
+    """Ответы на отдельные вопросы теста"""
+    __tablename__ = "test_answers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    test_result_id = Column(Integer, nullable=False, index=True)
+    question_id = Column(Integer, nullable=False)
+    
+    is_correct = Column(Boolean, nullable=False)
+    user_answer = Column(String(100), nullable=True)
+    correct_answer = Column(String(100), nullable=True)
+    
+    difficulty_at_answer = Column(Integer, default=5)
+    
+    answered_at = Column(DateTime, default=datetime.utcnow)
 
 
 class GenerationLog(Base):
