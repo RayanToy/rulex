@@ -1,0 +1,19 @@
+meta:
+  environment: docker
+  toolchain:
+    name: docker
+    version: "1.0"
+
+build:
+  dockerfile: Dockerfile
+  context: .
+
+run:
+  containerPort: 8000
+  persistentVolumes:
+    - mountPath: /app/data
+      size: 1Gi
+      name: app-data
+    - mountPath: /app/db
+      size: 1Gi
+      name: sqlite-data
