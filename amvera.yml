@@ -10,10 +10,3 @@ build:
 
 run:
   containerPort: 8000
-  persistentVolumes:
-    - mountPath: /app/data
-      size: 1Gi
-      name: app-data
-    - mountPath: /app/db
-      size: 1Gi
-      name: sqlite-data
