@@ -29,21 +29,24 @@
             align-items: center;
             justify-content: space-between;
         }
-        .header-left {
+	.header-left {
             display: flex;
-            align-items: flex-start;
-            gap: 16px;
+            align-items: center;
+            gap: 20px;
+            flex: 1;
         }
         .fund-logo {
-            height: 60px;
+            height: 55px;
+            min-width: 55px;
             width: auto;
             object-fit: contain;
         }
         .fund-text {
-            font-size: 12px;
+            font-size: 11px;
             color: #64748b;
-            line-height: 1.4;
-            max-width: 300px;
+            line-height: 1.5;
+            text-align: justify;
+            max-width: 600px;
         }
         .header-right {
             display: flex;
@@ -823,7 +826,7 @@
         <div class="header-content">
             <div class="header-left">
                 <img src="/static/fund-logo.png" alt="Фонд содействия инновациям" class="fund-logo">
-                <p class="fund-text">Работа выполнена при поддержке гранта Фонда содействия инновациям</p>
+                <p class="fund-text" style="text-align: justify;">Работа выполнена при поддержке гранта Фонда содействия инновациям, предоставленного в рамках программы «Студенческий стартап» федерального проекта «Платформа университетского технологического предпринимательства».</p>
             </div>
             <div class="header-right" id="header-auth"></div>
         </div>
