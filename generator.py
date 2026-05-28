@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 from anthropic import Anthropic
 from dotenv import load_dotenv
 import pymorphy3
-import pandas as pd
+import csv
 from pathlib import Path
 import random
 
@@ -23,9 +23,20 @@ STOP_WORDS = {
     'бы', 'ли', 'вот', 'только', 'ещё', 'уже', 'где', 'когда', 'если', 'чтобы'
 }
 
+# ── Эвристики для отсева артефактов ──────────────────────────────────────
+MIN_WORD_LEN = 3
+MAX_WORD_LEN = 30
+MIN_VOWEL_RATIO = 0.25
+VOWELS = set('аеёиоуыэюяАЕЁИОУЫЭЮЯ')
+
+# Запрещённые сочетания согласных (характерны для артефактов)
+INVALID_CONSONANT_CLUSTERS = [
+    'пкн', 'тпт', 'рьщ', 'гнн', 'бщт', 'вщр',
+]
+
 
 class WordListManager:
-    """Управление списками слов по классам и словарём Шарова"""
+    """Управление списками слов по классам и словарём Шарова (оптимизировано, без pandas)"""
     
     def __init__(self):
         self.freq_lists = {}
@@ -42,21 +53,26 @@ class WordListManager:
             # Частотный список
             freq_path = DATA_DIR / f"class_{class_num}_freq.csv"
             if freq_path.exists():
+                self.freq_lists[class_num] = {}
                 try:
-                    df = pd.read_csv(freq_path, encoding='utf-8')
-                    word_col = df.columns[0]
-                    freq_col = df.columns[1] if len(df.columns) > 1 else None
-                    
-                    if freq_col:
-                        self.freq_lists[class_num] = {
-                            str(row[word_col]).lower().strip(): float(row[freq_col]) if pd.notna(row[freq_col]) else 1
-                            for _, row in df.iterrows()
-                            if pd.notna(row[word_col]) and str(row[word_col]).strip()
-                        }
-                    else:
-                        self.freq_lists[class_num] = {
-                            str(w).lower().strip(): 1 for w in df[word_col].dropna()
-                        }
+                    with open(freq_path, 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            if not row:
+                                continue
+                            word = row[0].strip().lower()
+                            # Пропускаем пустые строки, NaN и возможные заголовки
+                            if not word or word == 'nan' or word == 'word' or word == 'слово':
+                                continue
+                            
+                            freq = 1.0
+                            if len(row) > 1 and row[1].strip():
+                                try:
+                                    freq = float(row[1].strip())
+                                except ValueError:
+                                    pass  # Если не получилось преобразовать в число, оставляем 1.0
+                            
+                            self.freq_lists[class_num][word] = freq
                     print(f"[OK] Freq class {class_num}: {len(self.freq_lists[class_num])} words")
                 except Exception as e:
                     print(f"[ERROR] Freq class {class_num}: {e}")
@@ -64,13 +80,18 @@ class WordListManager:
             # Относительный список
             rel_path = DATA_DIR / f"class_{class_num}_relative.csv"
             if rel_path.exists():
+                self.relative_lists[class_num] = set()
                 try:
-                    df = pd.read_csv(rel_path, encoding='utf-8')
-                    word_col = df.columns[0]
-                    self.relative_lists[class_num] = {
-                        str(w).lower().strip() for w in df[word_col].dropna()
-                        if str(w).strip() and str(w) != 'nan'
-                    }
+                    with open(rel_path, 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        for row in reader:
+                            if not row:
+                                continue
+                            word = row[0].strip().lower()
+                            if not word or word == 'nan' or word == 'word' or word == 'слово':
+                                continue
+                            
+                            self.relative_lists[class_num].add(word)
                     print(f"[OK] Relative class {class_num}: {len(self.relative_lists[class_num])} words")
                 except Exception as e:
                     print(f"[ERROR] Relative class {class_num}: {e}")
@@ -81,27 +102,32 @@ class WordListManager:
             return
         
         try:
-            for sep in ['\t', ';', ',']:
-                try:
-                    df = pd.read_csv(sharov_path, sep=sep, encoding='utf-8', on_bad_lines='skip')
-                    if len(df.columns) >= 2:
-                        break
-                except:
-                    continue
-            
-            if len(df.columns) >= 2:
-                word_col = df.columns[0]
-                freq_col = df.columns[1]
-                
-                for _, row in df.iterrows():
-                    word = str(row[word_col]).lower().strip()
-                    try:
-                        freq = float(row[freq_col])
-                        if word and word != 'nan':
-                            self.sharov[word] = freq
-                    except:
+            with open(sharov_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
                         continue
-                print(f"[OK] Sharov: {len(self.sharov)} words")
+                    
+                    # Пытаемся угадать разделитель (таб, точка с запятой или запятая)
+                    if '\t' in line:
+                        parts = line.split('\t')
+                    elif ';' in line:
+                        parts = line.split(';')
+                    elif ',' in line:
+                        parts = line.split(',')
+                    else:
+                        parts = line.split()
+                        
+                    if len(parts) >= 2:
+                        word = parts[0].strip().lower()
+                        if not word or word == 'nan' or word == 'word':
+                            continue
+                        try:
+                            freq = float(parts[1].strip())
+                            self.sharov[word] = freq
+                        except ValueError:
+                            continue  # Пропускаем заголовки или битые числа
+            print(f"[OK] Sharov: {len(self.sharov)} words")
         except Exception as e:
             print(f"[ERROR] Sharov: {e}")
     
@@ -192,6 +218,107 @@ class QuestionGenerator:
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text.strip()
+    
+    def _is_artifact(self, word: str) -> Tuple[bool, str]:
+        """
+        Эвристическая проверка: является ли слово артефактом (мусором из датасета).
+        Работает без LLM, поэтому очень быстрая.
+        """
+        w = word.lower().strip()
+        
+        # Слишком короткое
+        if len(w) < MIN_WORD_LEN:
+            return True, f"Слишком короткое ({len(w)} букв)"
+        
+        # Слишком длинное
+        if len(w) > MAX_WORD_LEN:
+            return True, f"Слишком длинное ({len(w)} букв)"
+        
+        # Недостаточно гласных — признак артефакта (пкно, тпт, рьщ...)
+        vowel_count = sum(1 for c in w if c in VOWELS)
+        vowel_ratio = vowel_count / len(w) if len(w) > 0 else 0
+        if vowel_ratio < MIN_VOWEL_RATIO:
+            return True, f"Мало гласных ({vowel_ratio:.0%}), вероятно артефакт"
+        
+        # Запрещённые кластеры согласных
+        for cluster in INVALID_CONSONANT_CLUSTERS:
+            if cluster in w:
+                return True, f"Недопустимое сочетание букв '{cluster}'"
+        
+        # pymorphy3 не знает слово совсем (score < 0.05 означает полную неизвестность)
+        parsed = morph.parse(w)
+        if parsed:
+            best = parsed[0]
+            if best.score < 0.05:
+                return True, f"Слово неизвестно морфологическому словарю (score={best.score:.3f})"
+        
+        return False, "OK"
+    
+    def _filter_real_words_batch(self, words: List[str], batch_size: int = 30) -> List[str]:
+        """
+        Проверяет сразу пачку слов одним вызовом LLM.
+        Отсеивает выдуманные слова типа 'травие', 'восьмибрат', 'плэда'.
+        """
+        real_words = []
+        
+        for i in range(0, len(words), batch_size):
+            batch = words[i:i + batch_size]
+            words_str = ', '.join(batch)
+            
+            prompt = f"""Ты эксперт русского языка и лексикограф.
+
+Из списка слов выбери ТОЛЬКО те, которые реально существуют в стандартном русском языке и есть в словарях (Ожегов, РАС, Викисловарь).
+
+ОТСЕИВАЙ слова которые:
+- Выдуманы или являются артефактами датасета
+- Звучат похоже на реальные, но НЕ существуют в словарях
+- Являются ошибочными или искажёнными формами реальных слов
+
+Примеры ВЫМЫШЛЕННЫХ слов которые нужно отсеять:
+- травие (звучит как "трава" но это НЕ слово)
+- восьмибрат (выдуманное)
+- плэда (неправильное написание)
+- будрить (похоже на "будить" но это НЕ слово)
+- сугибнуть (выдуманное)
+- ведрик (похоже на уменьшительное от "ведро" но такого слова НЕТ)
+- пкно, тпеть, рьщарить (явный мусор)
+
+Список для проверки:
+{words_str}
+
+Напиши ТОЛЬКО реальные существующие слова через запятую, без пояснений и нумерации:"""
+
+            try:
+                response = self._call_llm(prompt, max_tokens=200)
+                
+                # Парсим ответ
+                if ':' in response:
+                    response = response.split(':', 1)[-1]
+                
+                confirmed = [
+                    w.strip().lower().rstrip('.').rstrip(',')
+                    for w in response.split(',')
+                    if w.strip()
+                ]
+                
+                # Оставляем только те что были в батче И подтверждены
+                batch_lower = [w.lower() for w in batch]
+                confirmed_set = set(confirmed)
+                
+                valid_in_batch = [w for w in batch if w.lower() in confirmed_set]
+                rejected = [w for w in batch if w.lower() not in confirmed_set]
+                
+                if rejected:
+                    print(f"[FAKE] Отсеяно {len(rejected)} вымышленных слов: {', '.join(rejected[:5])}")
+                
+                real_words.extend(valid_in_batch)
+                
+            except Exception as e:
+                print(f"[ERROR] Batch check failed: {e}")
+                # При ошибке LLM — добавляем весь батч (лучше пропустить чем потерять)
+                real_words.extend(batch)
+        
+        return real_words
     
     def _check_word_suitability(self, word: str) -> Tuple[bool, str]:
         """Проверка слова через LLM на пригодность для теста словарного запаса"""
@@ -407,30 +534,73 @@ class QuestionGenerator:
         return result
     
     def generate_questions_for_class(self, word_class: int, count: int = 20) -> List[dict]:
-        """Автоматическая генерация вопросов для класса"""
+        """
+        Автоматическая генерация вопросов для класса.
+        
+        Изменения:
+        1. Эвристическая фильтрация артефактов (быстро, без LLM)
+        2. Батч-проверка реальности слов через LLM (экономия ~95% вызовов)
+        3. Увеличенный пул кандидатов
+        """
         
         all_words = self.word_manager.get_words_for_class(word_class)
         
         if not all_words:
             raise ValueError(f"Нет списка слов для {word_class} класса")
         
-        # Базовая фильтрация
-        basic_valid = []
+        # ── Шаг 1: эвристическая фильтрация (бесплатно) ─────────────────
+        clean_words = []
+        artifact_count = 0
+        
         for w in all_words:
+            # Базовая проверка
             is_valid, _ = self._is_basic_valid(w)
-            if is_valid:
-                basic_valid.append(w)
+            if not is_valid:
+                artifact_count += 1
+                continue
+            
+            # Эвристика артефактов
+            is_art, _ = self._is_artifact(w)
+            if is_art:
+                artifact_count += 1
+                continue
+            
+            clean_words.append(w)
         
-        print(f"[INFO] Class {word_class}: {len(all_words)} total, {len(basic_valid)} basic valid")
+        print(f"[INFO] Class {word_class}: {len(all_words)} всего, {artifact_count} артефактов удалено, {len(clean_words)} чистых слов")
         
-        if len(basic_valid) < 5:
-            raise ValueError(f"Недостаточно валидных слов для {word_class} класса")
+        if len(clean_words) < 5:
+            raise ValueError(
+                f"Недостаточно валидных слов для {word_class} класса "
+                f"(после фильтрации осталось {len(clean_words)})"
+            )
         
-        # Перемешиваем и берём с запасом
-        random.shuffle(basic_valid)
-        candidates = basic_valid[:count * 3]  # Берём в 3 раза больше на случай отсева
+        # ── Шаг 2: батч-проверка реальности через LLM ────────────────────
+        random.shuffle(clean_words)
         
-        # Распределение частотности
+        # Берём пул с запасом для LLM-проверки (count * 5 = 100 слов)
+        # Это займёт примерно 100/30 ≈ 4 вызова LLM вместо 100
+        check_pool_size = min(len(clean_words), count * 5)
+        check_pool = clean_words[:check_pool_size]
+        
+        print(f"[INFO] Проверяю реальность {len(check_pool)} слов через LLM...")
+        real_words = self._filter_real_words_batch(check_pool, batch_size=30)
+        
+        print(f"[INFO] После LLM-проверки: {len(real_words)} реальных слов")
+        
+        # ── Шаг 3: если мало — добираем из оставшихся ────────────────────
+        if len(real_words) < count * 2:
+            print(f"[INFO] Мало реальных слов, проверяю дополнительный батч...")
+            extra_pool = clean_words[check_pool_size : check_pool_size + count * 3]
+            if extra_pool:
+                extra_real = self._filter_real_words_batch(extra_pool, batch_size=30)
+                real_words.extend(extra_real)
+                print(f"[INFO] После дополнительной проверки: {len(real_words)} реальных слов")
+        
+        if len(real_words) < 5:
+            raise ValueError(f"Критически мало реальных слов: {len(real_words)}")
+        
+        # ── Шаг 4: распределение частотности ─────────────────────────────
         freq_distribution = (
             ["high"] * int(count * 0.4) +
             ["medium"] * int(count * 0.4) +
@@ -438,30 +608,47 @@ class QuestionGenerator:
         )
         random.shuffle(freq_distribution)
         
+        # ── Шаг 5: основной цикл генерации ───────────────────────────────
+        # Берём до 8× слов на случай отсева при генерации
+        candidates = real_words[:min(len(real_words), count * 8)]
+        
         questions = []
-        checked_words = 0
         
         for word in candidates:
             if len(questions) >= count:
                 break
             
-            checked_words += 1
-            
-            # Проверка через LLM (каждое 3-е слово для экономии)
-            if checked_words % 3 == 1:
-                is_suitable, reason = self._check_word_suitability(word)
-                if not is_suitable:
-                    print(f"[SKIP] {word}: {reason}")
-                    continue
+            # Проверка пригодности для теста (специальные термины и т.д.)
+            is_suitable, reason = self._check_word_suitability(word)
+            if not is_suitable:
+                print(f"[SKIP] {word}: {reason}")
+                continue
             
             try:
-                freq_type = freq_distribution[len(questions)] if len(questions) < len(freq_distribution) else "medium"
+                freq_type = (
+                    freq_distribution[len(questions)]
+                    if len(questions) < len(freq_distribution)
+                    else "medium"
+                )
                 question = self.generate_question(word, word_class, freq_type)
                 questions.append(question)
                 print(f"[OK] {len(questions)}/{count}: {word}")
             except Exception as e:
                 print(f"[ERROR] {word}: {e}")
                 continue
+        
+        # ── Шаг 6: проверка результата ───────────────────────────────────
+        if len(questions) < count:
+            print(
+                f"[WARN] Удалось сгенерировать только {len(questions)}/{count} вопросов. "
+                f"Проверьте качество словаря class_{word_class}_relative.csv"
+            )
+        
+        if len(questions) < max(5, count // 2):
+            raise ValueError(
+                f"Критически мало вопросов: {len(questions)}/{count}. "
+                f"Словарь класса {word_class} содержит слишком много артефактов или специальных терминов."
+            )
         
         return questions
     
