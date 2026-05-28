@@ -607,7 +607,6 @@ async def delete_question(question_id: int, session_token: Optional[str] = Cooki
         await session.commit()
         return {"message": "OK"}
 
-
 @app.post("/api/auto-generate")
 async def auto_generate_questions(data: TestStartRequest, session_token: Optional[str] = Cookie(None)):
     """Автоматическая генерация вопросов для класса из списка слов"""
@@ -622,13 +621,20 @@ async def auto_generate_questions(data: TestStartRequest, session_token: Optiona
         generator = QuestionGenerator()
         
         if not generator.has_word_list(grade):
-            raise HTTPException(status_code=400, detail=f"Нет списка слов для {grade} класса")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Нет списка слов для {grade} класса"
+            )
         
         # Генерируем 20 вопросов
         questions = generator.generate_questions_for_class(grade, 20)
         
+        # Явная проверка результата
         if not questions:
-            raise HTTPException(status_code=500, detail="Не удалось сгенерировать вопросы")
+            raise HTTPException(
+                status_code=500,
+                detail="Не удалось сгенерировать ни одного вопроса"
+            )
         
         # Сохраняем в БД
         saved_count = 0
@@ -653,8 +659,19 @@ async def auto_generate_questions(data: TestStartRequest, session_token: Optiona
             
             await session.commit()
         
-        return {"message": f"Сгенерировано и сохранено {saved_count} вопросов для {grade} класса"}
+        # Информативный ответ
+        return {
+            "message": f"Сгенерировано и сохранено {saved_count} вопросов для {grade} класса",
+            "requested": 20,
+            "generated": saved_count,
+            "warning": (
+                f"Удалось сгенерировать только {saved_count}/20 вопросов. "
+                "Проверьте качество словаря для этого класса."
+            ) if saved_count < 20 else None
+        }
     
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         print(f"Error: {traceback.format_exc()}")
