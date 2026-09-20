@@ -3,10 +3,11 @@ import os
 import json
 import re
 from typing import List, Optional, Tuple
-from anthropic import Anthropic
+from anthropic import Anthropic, APIConnectionError, APIError, APIStatusError
 from dotenv import load_dotenv
 import pymorphy3
 import csv
+import sys
 from pathlib import Path
 import random
 
@@ -14,6 +15,18 @@ load_dotenv()
 
 morph = pymorphy3.MorphAnalyzer()
 DATA_DIR = Path(__file__).parent / "data"
+
+
+def _log(message: str) -> None:
+    """Печать, устойчивая к кодировке консоли.
+
+    Сообщения об ошибках приходят из API и могут содержать символы,
+    которых нет в cp1251 (например, полноширинный ＄). Обычный print()
+    на такой строке падает с UnicodeEncodeError — то есть обработчик
+    ошибки сам роняет процесс.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    sys.stdout.write(message.encode(encoding, errors="replace").decode(encoding) + "\n")
 
 # Стоп-слова (служебные, очень частые)
 STOP_WORDS = {
@@ -101,34 +114,49 @@ class WordListManager:
         if not sharov_path.exists():
             return
         
+        # Формат файла: Lemma <TAB> PoS <TAB> Freq(ipm) <TAB> R <TAB> D <TAB> Doc
+        # Колонку частоты ищем по заголовку, а не по фиксированному индексу:
+        # раньше здесь читался parts[1] — то есть часть речи ('conj', 's', 'v').
+        # float() от неё всегда бросал ValueError, ValueError гасился continue,
+        # и словарь на 52 139 строк молча оставался пустым.
+        def _split(line: str) -> list:
+            for sep in ('\t', ';', ','):
+                if sep in line:
+                    return line.split(sep)
+            return line.split()
+
         try:
+            freq_idx = 2  # значение по умолчанию для известного формата
             with open(sharov_path, 'r', encoding='utf-8') as f:
-                for line in f:
+                for lineno, line in enumerate(f):
                     line = line.strip()
                     if not line:
                         continue
-                    
-                    # Пытаемся угадать разделитель (таб, точка с запятой или запятая)
-                    if '\t' in line:
-                        parts = line.split('\t')
-                    elif ';' in line:
-                        parts = line.split(';')
-                    elif ',' in line:
-                        parts = line.split(',')
-                    else:
-                        parts = line.split()
-                        
-                    if len(parts) >= 2:
-                        word = parts[0].strip().lower()
-                        if not word or word == 'nan' or word == 'word':
-                            continue
-                        try:
-                            freq = float(parts[1].strip())
-                            self.sharov[word] = freq
-                        except ValueError:
-                            continue  # Пропускаем заголовки или битые числа
+                    parts = _split(line)
+
+                    if lineno == 0:
+                        header = [p.strip().lower() for p in parts]
+                        for i, name in enumerate(header):
+                            if 'freq' in name or 'ipm' in name:
+                                freq_idx = i
+                                break
+                        if header and header[0] in ('lemma', 'word', 'слово'):
+                            continue  # это заголовок, не данные
+
+                    if len(parts) <= freq_idx:
+                        continue
+                    word = parts[0].strip().lower()
+                    if not word or word in ('nan', 'word', 'lemma'):
+                        continue
+                    try:
+                        freq = float(parts[freq_idx].strip())
+                    except ValueError:
+                        continue
+                    # Лемма встречается по разу на каждую часть речи —
+                    # суммируем, нас интересует употребительность слова в целом.
+                    self.sharov[word] = self.sharov.get(word, 0.0) + freq
             print(f"[OK] Sharov: {len(self.sharov)} words")
-        except Exception as e:
+        except OSError as e:
             print(f"[ERROR] Sharov: {e}")
     
     def get_word_frequency_in_class(self, word: str, class_num: int) -> float:
@@ -190,10 +218,20 @@ class QuestionGenerator:
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not found")
         
-        self.client = Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-20250514"
+        # base_url позволяет работать через совместимый шлюз
+        # (прямой доступ к api.anthropic.com доступен не везде).
+        self.client = Anthropic(
+            api_key=api_key,
+            base_url=os.getenv("ANTHROPIC_BASE_URL") or None,
+        )
+        # Модель вынесена в окружение: прежний claude-sonnet-4-20250514
+        # снят с обслуживания и отвечал 404 на каждый вызов.
+        self.model = os.getenv("RULEX_MODEL_GENERATION", "claude-sonnet-5")
         self.word_manager = WordListManager()
         self.generation_log = []
+        # Батчи, которые не удалось проверить из-за сбоя API.
+        # Непустой список означает, что фильтрация прошла не полностью.
+        self.filter_failures: List[dict] = []
     
     def _log(self, step: str, data: dict):
         self.generation_log.append({"step": step, **data})
@@ -258,9 +296,15 @@ class QuestionGenerator:
         """
         Проверяет сразу пачку слов одним вызовом LLM.
         Отсеивает выдуманные слова типа 'травие', 'восьмибрат', 'плэда'.
+
+        При сбое API батч ОТБРАСЫВАЕТСЯ, а не пропускается целиком:
+        лучше потерять слова, чем тихо пустить мусор в тест.
+        Факт деградации виден в self.filter_failures.
         """
         real_words = []
-        
+        self.filter_failures = []
+        total_batches = (len(words) + batch_size - 1) // batch_size
+
         for i in range(0, len(words), batch_size):
             batch = words[i:i + batch_size]
             words_str = ', '.join(batch)
@@ -289,8 +333,10 @@ class QuestionGenerator:
 Напиши ТОЛЬКО реальные существующие слова через запятую, без пояснений и нумерации:"""
 
             try:
-                response = self._call_llm(prompt, max_tokens=200)
-                
+                # 30 слов через запятую заметно длиннее прежних 200 токенов:
+                # ответ обрезался, и валидные слова молча терялись.
+                response = self._call_llm(prompt, max_tokens=1024)
+
                 # Парсим ответ
                 if ':' in response:
                     response = response.split(':', 1)[-1]
@@ -313,11 +359,19 @@ class QuestionGenerator:
                 
                 real_words.extend(valid_in_batch)
                 
-            except Exception as e:
-                print(f"[ERROR] Batch check failed: {e}")
-                # При ошибке LLM — добавляем весь батч (лучше пропустить чем потерять)
-                real_words.extend(batch)
-        
+            except (APIStatusError, APIConnectionError, APIError) as e:
+                # Раньше здесь в результат добавлялся ВЕСЬ батч, включая мусор:
+                # сбой API молча отключал фильтрацию, и снаружи это было не видно.
+                # Теперь батч отбрасывается, а факт деградации фиксируется.
+                self.filter_failures.append({
+                    "batch_size": len(batch),
+                    "error": f"{type(e).__name__}: {e}",
+                })
+                _log(f"[ERROR] Батч из {len(batch)} слов отброшен: {type(e).__name__}")
+
+        if self.filter_failures:
+            _log(f"[WARN] Фильтр деградировал: {len(self.filter_failures)} "
+                 f"батч(ей) из {total_batches} не проверено и отброшено")
         return real_words
     
     def _check_word_suitability(self, word: str) -> Tuple[bool, str]:

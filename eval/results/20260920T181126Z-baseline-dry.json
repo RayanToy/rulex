@@ -1,0 +1,178 @@
+{
+  "run_id": "20260920T181126Z-baseline-dry",
+  "dry_run": true,
+  "model": "claude-sonnet-4-20250514",
+  "words_file": "eval\\words.tsv",
+  "n_words": 30,
+  "labels": {
+    "real": 19,
+    "artifact": 11
+  },
+  "filter": {
+    "heuristic": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 11,
+      "tn": 18,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "accuracy": 0.6
+    },
+    "heuristic_rejections": {
+      "всхрюкнуть": "Мало гласных (20%), вероятно артефакт"
+    },
+    "per_word": [
+      {
+        "word": "всхрюкнуть",
+        "truth": "real",
+        "heuristic": "artifact"
+      },
+      {
+        "word": "пятисторонник",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "сровняться",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "кроманьонец",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "почестьмить",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "жоут",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "пажалст",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "ругатель",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "старейшинство",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "микробарограф",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "проезжаться",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "иант",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "расчухать",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "кучиться",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "фельдшеров",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "немезид",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "робототехник",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "материальность",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "суэссоя",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "городнычий",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "окситомипин",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "перешибать",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "окликаться",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "вымокать",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "гипотензия",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "продуктообмен",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "детоксикация",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "любовьювоспоминание",
+        "truth": "artifact",
+        "heuristic": "real"
+      },
+      {
+        "word": "пурин",
+        "truth": "real",
+        "heuristic": "real"
+      },
+      {
+        "word": "инвар",
+        "truth": "real",
+        "heuristic": "real"
+      }
+    ]
+  }
+}
