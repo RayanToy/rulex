@@ -1,0 +1,357 @@
+{
+  "run_id": "20260920T184328Z-BEFORE2",
+  "dry_run": false,
+  "model": "claude-sonnet-5",
+  "words_file": "eval\\words.tsv",
+  "n_words": 30,
+  "labels": {
+    "real": 19,
+    "artifact": 11
+  },
+  "filter": {
+    "heuristic": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 11,
+      "tn": 18,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "accuracy": 0.6
+    },
+    "heuristic_rejections": {
+      "всхрюкнуть": "Мало гласных (20%), вероятно артефакт"
+    },
+    "per_word": [
+      {
+        "word": "всхрюкнуть",
+        "truth": "real",
+        "heuristic": "artifact",
+        "combined": "artifact"
+      },
+      {
+        "word": "пятисторонник",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "сровняться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "кроманьонец",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "почестьмить",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "жоут",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "пажалст",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "ругатель",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "старейшинство",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "микробарограф",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "проезжаться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "иант",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "расчухать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "кучиться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "фельдшеров",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "немезид",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "робототехник",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "материальность",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "суэссоя",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "городнычий",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "окситомипин",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "перешибать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "окликаться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "вымокать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "гипотензия",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "продуктообмен",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "детоксикация",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "любовьювоспоминание",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "пурин",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "инвар",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      }
+    ],
+    "llm_kept": [
+      "вымокать",
+      "гипотензия",
+      "детоксикация",
+      "инвар",
+      "кучиться",
+      "материальность",
+      "микробарограф",
+      "окликаться",
+      "перешибать",
+      "проезжаться",
+      "пурин",
+      "ругатель",
+      "сровняться",
+      "старейшинство"
+    ],
+    "combined": {
+      "tp": 11,
+      "fp": 5,
+      "fn": 0,
+      "tn": 14,
+      "precision": 0.6875,
+      "recall": 1.0,
+      "f1": 0.8148,
+      "accuracy": 0.8333
+    }
+  },
+  "generation": {
+    "attempted": 19,
+    "succeeded": 2,
+    "yield": 0.1053,
+    "definition_leak_rate": 0.0,
+    "pos_match_mean": 1.0,
+    "distractors_mean": 3,
+    "items": [
+      {
+        "word": "материальность",
+        "definition": "Свойство предмета иметь физическую форму, которую можно потрогать или увидеть —",
+        "distractors": [
+          "вещественность",
+          "осязаемость",
+          "телесность"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "word": "вымокать",
+        "definition": "Становиться полностью мокрым, промокнуть насквозь под действием воды или влаги —",
+        "distractors": [
+          "намокать",
+          "высыхать",
+          "пропитываться"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      }
+    ],
+    "failures": [
+      {
+        "word": "всхрюкнуть",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "сровняться",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "кроманьонец",
+        "error": "ValueError: Не удалось найти дистракторы для 'кроманьонец'"
+      },
+      {
+        "word": "ругатель",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "старейшинство",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "микробарограф",
+        "error": "ValueError: Не удалось найти дистракторы для 'микробарограф'"
+      },
+      {
+        "word": "проезжаться",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "расчухать",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "кучиться",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "робототехник",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "перешибать",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "окликаться",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "гипотензия",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "продуктообмен",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "детоксикация",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "пурин",
+        "error": "AttributeError: 'ThinkingBlock' object has no attribute 'text'"
+      },
+      {
+        "word": "инвар",
+        "error": "ValueError: Не удалось найти дистракторы для 'инвар'"
+      }
+    ]
+  },
+  "usage": {
+    "calls_total": 26,
+    "calls_live": 26,
+    "calls_cached": 0,
+    "calls_without_usage": 11,
+    "usage_reliable": false,
+    "input_tokens": 7793,
+    "output_tokens": 5877,
+    "cost_usd": 0.0744,
+    "latency_p50_s": 12.422,
+    "latency_p95_s": 31.932,
+    "latency_mean_s": 15.028,
+    "models": [
+      "claude-sonnet-5"
+    ]
+  },
+  "cost_per_question": 0.0372
+}

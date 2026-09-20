@@ -1295,9 +1295,8 @@
         let testAnswers = [];
         let selectedGrade = 6; // Класс ученика
         let selectedWordClass = 5; // Класс слов (на 1 меньше)
-        let currentDifficulty = 5;
-        let consecutiveCorrect = 0;
-        let consecutiveWrong = 0;
+        // Сложность и подсчёт верных ответов живут на сервере:
+        // браузер больше не знает правильных ответов.
         let questionsData = [];
         // Функция для получения названия класса
         function getGradeLabel(grade) {
@@ -1494,9 +1493,6 @@
                 currentQuestion = 0;
                 selectedAnswer = null;
                 testAnswers = [];
-                currentDifficulty = 5;
-                consecutiveCorrect = 0;
-                consecutiveWrong = 0;
                 document.getElementById('test-setup').classList.add('hidden');
                 document.getElementById('test-result').classList.add('hidden');
                 document.getElementById('test-question').classList.remove('hidden');
@@ -1507,13 +1503,17 @@
                 alert('Ошибка загрузки теста');
             }
         }
-        function updateDifficultyDots() {
+        function updateDifficultyDots(difficulty) {
+            // Показываем сложность текущего вопроса (её сервер присылает
+            // и она не выдаёт ответ). Раньше здесь рисовался клиентский
+            // счётчик верных ответов — вместе с ним ушёл и подсчёт.
+            const level = difficulty || 5;
             const dots = document.querySelectorAll('.difficulty-dot');
             dots.forEach((dot, index) => {
                 dot.classList.remove('active', 'high');
-                if (index < currentDifficulty) {
+                if (index < level) {
                     dot.classList.add('active');
-                    if (currentDifficulty >= 8) {
+                    if (level >= 8) {
                         dot.classList.add('high');
                     }
                 }
@@ -1529,7 +1529,7 @@
             const progress = (currentQuestion / testQuestions.length) * 100;
             document.getElementById('progress-bar').style.width = progress + '%';
             document.getElementById('progress-percent').textContent = Math.round(progress);
-            updateDifficultyDots();
+            updateDifficultyDots(q.difficulty);
             const container = document.getElementById('options-container');
             container.innerHTML = '';
             
@@ -1558,33 +1558,15 @@
             if (selectedAnswer === null) return;
             
             const q = testQuestions[currentQuestion];
-            const isCorrect = selectedAnswer.index === q.correct;
-            
-            if (isCorrect) {
-                consecutiveCorrect++;
-                consecutiveWrong = 0;
-                if (consecutiveCorrect >= 3) {
-                    currentDifficulty = Math.min(10, currentDifficulty + 1);
-                    consecutiveCorrect = 0;
-                }
-            } else {
-                consecutiveWrong++;
-                consecutiveCorrect = 0;
-                if (consecutiveWrong >= 2) {
-                    currentDifficulty = Math.max(1, currentDifficulty - 1);
-                    consecutiveWrong = 0;
-                }
-            }
-            
+
+            // Правильный ответ браузеру больше не известен — проверка
+            // и подсчёт сложности делаются на сервере. Отправляем только
+            // то, что выбрал ученик.
             testAnswers.push({
                 question_id: q.id,
-                is_correct: isCorrect,
-                user_answer: selectedAnswer.answer,
-                correct_answer: q.options[q.correct],
-                frequency_type: q.frequency_type || 'medium',
-                difficulty: currentDifficulty
+                answer: selectedAnswer.answer
             });
-            
+
             currentQuestion++;
             
             if (currentQuestion >= testQuestions.length) {

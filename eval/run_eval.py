@@ -87,7 +87,9 @@ class LLMRecorder:
                 "cost_usd": metrics.cost_usd(model, hit["input_tokens"], hit["output_tokens"]),
             })
             return SimpleNamespace(
-                content=[SimpleNamespace(text=hit["text"])],
+                stop_reason="end_turn",
+                # type="text" обязателен: потребитель отбирает блоки по типу
+                content=[SimpleNamespace(type="text", text=hit["text"])],
                 usage=SimpleNamespace(
                     input_tokens=hit["input_tokens"],
                     output_tokens=hit["output_tokens"],
@@ -101,7 +103,13 @@ class LLMRecorder:
         usage = getattr(response, "usage", None)
         in_tok = getattr(usage, "input_tokens", 0) or 0
         out_tok = getattr(usage, "output_tokens", 0) or 0
-        text = response.content[0].text if response.content else ""
+        # Текстовый блок не обязательно первый: при включённом рассуждении
+        # content[0] — ThinkingBlock без поля text. Харнесс не должен падать
+        # там, где измеряемый код работает, иначе метрика измеряет сама себя.
+        text = "\n".join(
+            block.text for block in (response.content or [])
+            if getattr(block, "type", None) == "text" and hasattr(block, "text")
+        )
 
         self.calls.append({
             "model": model,

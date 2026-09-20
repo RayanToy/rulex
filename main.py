@@ -24,7 +24,8 @@ import random
 
 from database import init_db, AsyncSessionLocal
 from models import Question, User, TestResult, TestAnswer
-from auth import hash_password, verify_password, create_session, get_user_id_from_token, delete_session
+from auth import (hash_password, verify_password, create_session,
+                  get_user_id_from_token, delete_session, needs_rehash)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -84,15 +85,40 @@ class TestStartRequest(BaseModel):
     grade: int = 6
 
 
-class TestAnswerRequest(BaseModel):
+class SubmittedAnswer(BaseModel):
+    """Ответ ученика на один вопрос.
+
+    Здесь намеренно НЕТ поля is_correct: раньше вердикт присылал браузер,
+    и сервер принимал его на веру — результат теста подделывался из
+    DevTools. Теперь сервер сверяет answer с эталоном из БД сам.
+    """
     question_id: int
-    answer: str
-    is_correct: bool
+    answer: Optional[str] = None  # текст выбранного варианта; None — без ответа
 
 
 class TestCompleteRequest(BaseModel):
-    answers: List[dict]
+    answers: List[SubmittedAnswer]
     grade: int
+
+
+# Ставить ли флаг Secure на куку сессии. По HTTP такая кука не отправляется,
+# поэтому локальная разработка ломалась бы при значении по умолчанию True.
+# В проде это обязано быть включено: RULEX_COOKIE_SECURE=1.
+COOKIE_SECURE = (os.getenv("RULEX_COOKIE_SECURE") or "").strip().lower() in {"1", "true", "yes"}
+
+
+def set_session_cookie(response: JSONResponse, token: str) -> JSONResponse:
+    """SameSite=Lax закрывает базовый CSRF: кука не уходит при
+    межсайтовых POST-запросах, а аутентификация тут именно на куке."""
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        max_age=604800,
+    )
+    return response
 
 
 # Вспомогательные функции
@@ -115,6 +141,51 @@ def calculate_level(percentage: float, high_freq_pct: float, low_freq_pct: float
         return "medium"
     else:
         return "low"
+
+
+async def require_user(session_token: Optional[str]) -> User:
+    """Любой авторизованный пользователь."""
+    user = await get_current_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    return user
+
+
+async def require_admin(session_token: Optional[str]) -> User:
+    """Учительские операции: банк вопросов и генерация.
+
+    Поле is_admin существовало в модели с самого начала, но не
+    проверялось нигде — любой зарегистрированный ученик мог выгрузить
+    весь банк вопросов вместе с ответами через /api/questions/full,
+    а также править и удалять вопросы.
+    """
+    user = await require_user(session_token)
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    return user
+
+
+def build_question_payload(question: Question) -> dict:
+    """Вопрос в том виде, в каком его можно отдать браузеру.
+
+    Правильный ответ НЕ передаётся. Раньше отдавались и индекс верного
+    варианта ("correct"), и target_word — а target_word совпадает с
+    correct_answer, то есть ответ уходил клиенту дважды. Проверка ответа
+    делается на сервере в /api/test/complete по значению из БД.
+    """
+    options = [question.correct_answer]
+    for distractor in (question.distractor_1, question.distractor_2, question.distractor_3):
+        if distractor:
+            options.append(distractor)
+    random.shuffle(options)
+
+    return {
+        "id": question.id,
+        "question": question.definition,
+        "options": options,
+        "frequency_type": question.frequency_type or "medium",
+        "difficulty": question.difficulty or 5,
+    }
 
 
 def get_recommendation(level: str, grade: int, percentage: float) -> str:
@@ -144,12 +215,19 @@ async def register(data: UserRegister):
         if existing:
             raise HTTPException(status_code=400, detail="Пользователь уже существует")
         
+        # Первый зарегистрировавшийся становится администратором:
+        # иначе учительские эндпоинты недоступны никому и вопросы
+        # нечем наполнять. Дальнейших админов назначают через
+        # scripts/make_admin.py.
+        first_user = (await session.execute(select(User.id).limit(1))).first() is None
+        
         user = User(
             username=data.username,
             email=data.email,
             hashed_password=hash_password(data.password),
             full_name=data.full_name,
-            grade=data.grade or 6
+            grade=data.grade or 6,
+            is_admin=first_user
         )
         session.add(user)
         await session.commit()
@@ -158,8 +236,7 @@ async def register(data: UserRegister):
         token = create_session(user.id)
         
         response = JSONResponse(content={"message": "OK", "user": user.to_dict()})
-        response.set_cookie(key="session_token", value=token, httponly=True, max_age=604800)
-        return response
+        return set_session_cookie(response, token)
 
 
 @app.post("/api/auth/login")
@@ -174,11 +251,16 @@ async def login(data: UserLogin):
         if not user.is_active:
             raise HTTPException(status_code=403, detail="Аккаунт заблокирован")
         
+        # Пароль верный — переводим старый SHA-256-хеш на Argon2 незаметно
+        # для пользователя, не требуя смены пароля.
+        if needs_rehash(user.hashed_password):
+            user.hashed_password = hash_password(data.password)
+            await session.commit()
+        
         token = create_session(user.id)
         
         response = JSONResponse(content={"message": "OK", "user": user.to_dict()})
-        response.set_cookie(key="session_token", value=token, httponly=True, max_age=604800)
-        return response
+        return set_session_cookie(response, token)
 
 
 @app.post("/api/auth/logout")
@@ -207,9 +289,7 @@ async def get_me(session_token: Optional[str] = Cookie(None)):
 @app.post("/api/test/start")
 async def start_adaptive_test(data: TestStartRequest, session_token: Optional[str] = Cookie(None)):
     """Начать адаптивный тест"""
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_user(session_token)
     
     grade = data.grade
     
@@ -259,30 +339,8 @@ async def start_adaptive_test(data: TestStartRequest, session_token: Optional[st
         # Перемешиваем
         random.shuffle(selected)
         
-        # Форматируем для фронтенда
-        questions_data = []
-        for q in selected:
-            options = [q.correct_answer]
-            if q.distractor_1:
-                options.append(q.distractor_1)
-            if q.distractor_2:
-                options.append(q.distractor_2)
-            if q.distractor_3:
-                options.append(q.distractor_3)
-            
-            random.shuffle(options)
-            correct_index = options.index(q.correct_answer)
-            
-            questions_data.append({
-                "id": q.id,
-                "question": q.definition,
-                "options": options,
-                "correct": correct_index,
-                "target_word": q.target_word,
-                "frequency_type": q.frequency_type or "medium",
-                "difficulty": q.difficulty or 5
-            })
-        
+        questions_data = [build_question_payload(q) for q in selected]
+
         return {
             "questions": questions_data,
             "grade": grade,
@@ -293,40 +351,65 @@ async def start_adaptive_test(data: TestStartRequest, session_token: Optional[st
 @app.post("/api/test/complete")
 async def complete_adaptive_test(data: TestCompleteRequest, session_token: Optional[str] = Cookie(None)):
     """Завершить тест и получить результаты"""
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_user(session_token)
     
-    answers = data.answers
     grade = data.grade
-    
+
+    if not data.answers:
+        raise HTTPException(status_code=400, detail="Нет ответов")
+
+    # Эталоны берём из БД. Клиент присылает только выбранный вариант —
+    # ни вердикт, ни частотность, ни сложность ему больше не доверяются.
+    question_ids = [a.question_id for a in data.answers]
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Question).where(Question.id.in_(question_ids)))
+        questions = {q.id: q for q in result.scalars().all()}
+
+    missing = [qid for qid in question_ids if qid not in questions]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Неизвестные вопросы: {missing[:5]}")
+
+    graded = []
+    for submitted in data.answers:
+        question = questions[submitted.question_id]
+        given = (submitted.answer or "").strip().lower()
+        expected = (question.correct_answer or "").strip().lower()
+        graded.append({
+            "question_id": question.id,
+            "is_correct": bool(given) and given == expected,
+            "user_answer": submitted.answer,
+            "correct_answer": question.correct_answer,
+            "frequency_type": question.frequency_type or "medium",
+            "difficulty": question.difficulty or 5,
+        })
+
     # Подсчёт результатов
-    total = len(answers)
-    correct = sum(1 for a in answers if a.get("is_correct"))
+    total = len(graded)
+    correct = sum(1 for a in graded if a["is_correct"])
     percentage = (correct / total * 100) if total > 0 else 0
-    
-    # Подсчёт по частотности
-    high_correct = sum(1 for a in answers if a.get("is_correct") and a.get("frequency_type") == "high")
-    high_total = sum(1 for a in answers if a.get("frequency_type") == "high")
-    
-    medium_correct = sum(1 for a in answers if a.get("is_correct") and a.get("frequency_type") == "medium")
-    medium_total = sum(1 for a in answers if a.get("frequency_type") == "medium")
-    
-    low_correct = sum(1 for a in answers if a.get("is_correct") and a.get("frequency_type") == "low")
-    low_total = sum(1 for a in answers if a.get("frequency_type") == "low")
-    
+
+    def count(freq: str, only_correct: bool = False) -> int:
+        return sum(
+            1 for a in graded
+            if a["frequency_type"] == freq and (a["is_correct"] or not only_correct)
+        )
+
+    high_correct, high_total = count("high", True), count("high")
+    medium_correct, medium_total = count("medium", True), count("medium")
+    low_correct, low_total = count("low", True), count("low")
+
     # Проценты
     high_pct = (high_correct / high_total * 100) if high_total > 0 else 100
     low_pct = (low_correct / low_total * 100) if low_total > 0 else 0
-    
+
     # Максимальная достигнутая сложность (адаптивная логика)
     max_difficulty = 5
     consecutive_correct = 0
     consecutive_wrong = 0
     current_difficulty = 5
-    
-    for a in answers:
-        if a.get("is_correct"):
+
+    for a in graded:
+        if a["is_correct"]:
             consecutive_correct += 1
             consecutive_wrong = 0
             if consecutive_correct >= 3:
@@ -338,9 +421,9 @@ async def complete_adaptive_test(data: TestCompleteRequest, session_token: Optio
             if consecutive_wrong >= 2:
                 current_difficulty = max(1, current_difficulty - 1)
                 consecutive_wrong = 0
-        
+
         max_difficulty = max(max_difficulty, current_difficulty)
-    
+
     # Определяем уровень
     level = calculate_level(percentage, high_pct, low_pct)
     recommendation = get_recommendation(level, grade, percentage)
@@ -368,14 +451,14 @@ async def complete_adaptive_test(data: TestCompleteRequest, session_token: Optio
         await session.refresh(test_result)
         
         # Сохраняем отдельные ответы
-        for a in answers:
+        for a in graded:
             answer = TestAnswer(
                 test_result_id=test_result.id,
-                question_id=a.get("question_id", 0),
-                is_correct=a.get("is_correct", False),
-                user_answer=a.get("user_answer"),
-                correct_answer=a.get("correct_answer"),
-                difficulty_at_answer=a.get("difficulty", 5)
+                question_id=a["question_id"],
+                is_correct=a["is_correct"],
+                user_answer=a["user_answer"],
+                correct_answer=a["correct_answer"],
+                difficulty_at_answer=a["difficulty"]
             )
             session.add(answer)
         
@@ -401,9 +484,7 @@ async def complete_adaptive_test(data: TestCompleteRequest, session_token: Optio
 @app.get("/api/test/history")
 async def get_test_history(session_token: Optional[str] = Cookie(None)):
     """История тестирований пользователя"""
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_user(session_token)
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -427,9 +508,7 @@ async def get_test_history(session_token: Optional[str] = Cookie(None)):
 
 @app.post("/api/generate-and-save")
 async def generate_and_save(data: WordInput, session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     try:
         from generator import QuestionGenerator
@@ -465,9 +544,7 @@ async def generate_and_save(data: WordInput, session_token: Optional[str] = Cook
 
 @app.post("/api/questions")
 async def create_question(question: QuestionCreate, session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     async with AsyncSessionLocal() as session:
         db_question = Question(
@@ -492,9 +569,7 @@ async def create_question(question: QuestionCreate, session_token: Optional[str]
 
 @app.get("/api/questions")
 async def get_all_questions(session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Question).where(Question.is_approved == True))
@@ -504,9 +579,7 @@ async def get_all_questions(session_token: Optional[str] = Cookie(None)):
 
 @app.get("/api/questions/full")
 async def get_all_questions_full(session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Question).where(Question.is_approved == True))
@@ -543,9 +616,7 @@ async def get_all_questions_full(session_token: Optional[str] = Cookie(None)):
 
 @app.put("/api/questions/{question_id}")
 async def update_question(question_id: int, question: QuestionCreate, session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Question).where(Question.id == question_id))
@@ -571,9 +642,7 @@ async def update_question(question_id: int, question: QuestionCreate, session_to
 
 @app.get("/api/questions/random")
 async def get_random_questions(count: int = 20, session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Question).where(Question.is_approved == True))
@@ -611,9 +680,7 @@ async def get_random_questions(count: int = 20, session_token: Optional[str] = C
 
 @app.delete("/api/questions/{question_id}")
 async def delete_question(question_id: int, session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Question).where(Question.id == question_id))
@@ -627,9 +694,7 @@ async def delete_question(question_id: int, session_token: Optional[str] = Cooki
 @app.post("/api/auto-generate")
 async def auto_generate_questions(data: TestStartRequest, session_token: Optional[str] = Cookie(None)):
     """Автоматическая генерация вопросов для класса из списка слов"""
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    user = await require_admin(session_token)
     
     grade = data.grade
     
@@ -709,49 +774,17 @@ async def auto_start_public_test(data: TestStartRequest):
         )
         all_questions = result.scalars().all()
         
-        # Если вопросов мало - генерируем автоматически
+        # Генерация отсюда убрана намеренно. Эндпоинт открыт без
+        # авторизации, а генерация 20 вопросов — это десятки платных
+        # вызовов LLM: любой желающий мог обнулить биллинг простым
+        # циклом запросов. Наполняет банк вопросов учитель через
+        # /api/auto-generate, который требует прав администратора.
         if len(all_questions) < 5:
-            try:
-                from generator import QuestionGenerator
-                generator = QuestionGenerator()
-                
-                if generator.has_word_list(grade):
-                    # Генерируем 20 вопросов
-                    new_questions = generator.generate_questions_for_class(grade, 20)
-                    
-                    for q in new_questions:
-                        db_question = Question(
-                            target_word=q["target_word"],
-                            definition=q["definition"],
-                            correct_answer=q["correct_answer"],
-                            distractor_1=q["distractors"][0] if len(q["distractors"]) > 0 else None,
-                            distractor_2=q["distractors"][1] if len(q["distractors"]) > 1 else None,
-                            distractor_3=q["distractors"][2] if len(q["distractors"]) > 2 else None,
-                            part_of_speech=q.get("part_of_speech"),
-                            word_class=grade,
-                            frequency_type=q.get("frequency_type", "medium"),
-                            difficulty=5,
-                            is_approved=True
-                        )
-                        session.add(db_question)
-                    
-                    await session.commit()
-                    
-                    # Перезагружаем вопросы
-                    result = await session.execute(
-                        select(Question).where(
-                            and_(Question.is_approved == True, Question.word_class == grade)
-                        )
-                    )
-                    all_questions = result.scalars().all()
-                else:
-                    raise HTTPException(status_code=400, detail=f"Нет вопросов и списка слов для {grade} класса")
-            
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Ошибка генерации: {str(e)}")
-        
-        if len(all_questions) < 5:
-            raise HTTPException(status_code=400, detail=f"Недостаточно вопросов для {grade} класса")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Для {grade} класса ещё не подготовлены вопросы. "
+                       f"Банк вопросов наполняет преподаватель."
+            )
         
         # Дальше обычная логика выбора вопросов
         high_freq = [q for q in all_questions if q.frequency_type == "high"]
@@ -781,34 +814,12 @@ async def auto_start_public_test(data: TestStartRequest):
         
         random.shuffle(selected)
         
-        questions_data = []
-        for q in selected:
-            options = [q.correct_answer]
-            if q.distractor_1:
-                options.append(q.distractor_1)
-            if q.distractor_2:
-                options.append(q.distractor_2)
-            if q.distractor_3:
-                options.append(q.distractor_3)
-            
-            random.shuffle(options)
-            correct_index = options.index(q.correct_answer)
-            
-            questions_data.append({
-                "id": q.id,
-                "question": q.definition,
-                "options": options,
-                "correct": correct_index,
-                "target_word": q.target_word,
-                "frequency_type": q.frequency_type or "medium",
-                "difficulty": q.difficulty or 5
-            })
-        
+        questions_data = [build_question_payload(q) for q in selected]
+
         return {
             "questions": questions_data,
             "grade": grade,
-            "total": len(questions_data),
-            "auto_generated": len(all_questions) < 5
+            "total": len(questions_data)
         }
 
 

@@ -270,14 +270,41 @@ class QuestionGenerator:
             return parsed[0].normal_form
         return word.lower()
     
-    def _call_llm(self, prompt: str, max_tokens: int = 500) -> str:
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=self.SYSTEM_CONTEXT,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text.strip()
+    def _call_llm(self, prompt: str, max_tokens: int = 500, effort: Optional[str] = None) -> str:
+        """Один вызов модели с извлечением текстового ответа.
+
+        Ответ может состоять из нескольких блоков, и текстовый — не всегда
+        первый: у современных моделей рассуждение включено по умолчанию,
+        поэтому content[0] нередко оказывается ThinkingBlock. Прежний код
+        брал content[0].text вслепую и падал с AttributeError на 11 словах
+        из 19 — недетерминированно, в зависимости от того, выдала ли модель
+        блок рассуждения.
+
+        effort ограничивает глубину рассуждения: для короткой классификации
+        она не нужна, а p95 латентности из-за неё доходила до 98 секунд.
+        """
+        params = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "system": self.SYSTEM_CONTEXT,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if effort:
+            params["output_config"] = {"effort": effort}
+
+        response = self.client.messages.create(**params)
+
+        parts = [
+            block.text for block in response.content
+            if getattr(block, "type", None) == "text" and hasattr(block, "text")
+        ]
+        if not parts:
+            raise ValueError(
+                f"Модель не вернула текстового блока "
+                f"(stop_reason={getattr(response, 'stop_reason', '?')}, "
+                f"блоки: {[getattr(b, 'type', '?') for b in response.content]})"
+            )
+        return "\n".join(parts).strip()
     
     def _is_artifact(self, word: str) -> Tuple[bool, str]:
         """
@@ -357,7 +384,7 @@ class QuestionGenerator:
             try:
                 # 30 слов через запятую заметно длиннее прежних 200 токенов:
                 # ответ обрезался, и валидные слова молча терялись.
-                response = self._call_llm(prompt, max_tokens=1024)
+                response = self._call_llm(prompt, max_tokens=1024, effort="low")
 
                 # Парсим ответ
                 if ':' in response:
@@ -417,7 +444,7 @@ class QuestionGenerator:
 ПРИЧИНА: краткое объяснение"""
 
         try:
-            response = self._call_llm(prompt, max_tokens=100)
+            response = self._call_llm(prompt, max_tokens=100, effort="low")
             
             is_suitable = "ПОДХОДИТ: да" in response.lower() or "подходит: да" in response.lower()
             

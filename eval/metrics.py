@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import functools
+import math
 from typing import Iterable, Sequence
 
 import pymorphy3
@@ -97,5 +98,5 @@ def percentile(values: Sequence[float], p: float) -> float:
     if not values:
         return 0.0
     ordered = sorted(values)
-    idx = max(0, min(len(ordered) - 1, int(round(p / 100 * len(ordered) + 0.5)) - 1))
+    idx = max(0, min(len(ordered) - 1, math.ceil(p / 100 * len(ordered)) - 1))
     return ordered[idx]

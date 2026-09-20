@@ -1,6 +1,12 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float
-from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from sqlalchemy.orm import declarative_base
+from datetime import datetime, timezone
+
+
+def utcnow() -> datetime:
+    """Наивный UTC: колонки DateTime здесь без часового пояса,
+    а datetime.utcnow() объявлен устаревшим."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 Base = declarative_base()
 
@@ -20,7 +26,7 @@ class User(Base):
     grade = Column(Integer, default=6)  # Класс ученика (4-7)
     current_level = Column(String(20), default="medium")  # low, medium, high
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     last_login = Column(DateTime, nullable=True)
     
     def to_dict(self):
@@ -54,8 +60,8 @@ class Question(Base):
     part_of_speech = Column(String(20), nullable=True)
     is_approved = Column(Boolean, default=False)
     generation_log = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     created_by = Column(Integer, nullable=True)
     
     def to_dict(self):
@@ -107,7 +113,7 @@ class TestResult(Base):
     # Рекомендация
     recommendation = Column(Text, nullable=True)
     
-    completed_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, default=utcnow)
 
 
 class TestAnswer(Base):
@@ -124,7 +130,7 @@ class TestAnswer(Base):
     
     difficulty_at_answer = Column(Integer, default=5)
     
-    answered_at = Column(DateTime, default=datetime.utcnow)
+    answered_at = Column(DateTime, default=utcnow)
 
 
 class GenerationLog(Base):
@@ -139,4 +145,4 @@ class GenerationLog(Base):
     llm_response = Column(Text, nullable=True)
     success = Column(Boolean, default=True)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
