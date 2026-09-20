@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import functools
 import os
 import json
 import re
@@ -196,6 +197,33 @@ class WordListManager:
         return []
 
 
+@functools.lru_cache(maxsize=1)
+def get_client() -> Anthropic:
+    """Один HTTP-клиент на процесс — иначе теряется пул соединений.
+
+    base_url позволяет работать через совместимый шлюз: прямой доступ
+    к api.anthropic.com доступен не везде.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY not found")
+    return Anthropic(
+        api_key=api_key,
+        base_url=os.getenv("ANTHROPIC_BASE_URL") or None,
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def get_word_manager() -> "WordListManager":
+    """Единственный экземпляр словарей на процесс.
+
+    Построение читает ~12.5 МБ CSV и занимает около 0.9 с. Раньше оно
+    происходило на каждый запрос к четырём эндпоинтам, причём синхронно
+    внутри async-обработчика — то есть блокировало весь event loop.
+    """
+    return WordListManager()
+
+
 class QuestionGenerator:
     """Генератор вопросов для теста на словарный запас"""
     
@@ -214,20 +242,14 @@ class QuestionGenerator:
 7. Значение слова должно быть понятно из общего образования, а не из специальных знаний"""
 
     def __init__(self):
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found")
-        
-        # base_url позволяет работать через совместимый шлюз
-        # (прямой доступ к api.anthropic.com доступен не везде).
-        self.client = Anthropic(
-            api_key=api_key,
-            base_url=os.getenv("ANTHROPIC_BASE_URL") or None,
-        )
+        # Клиент и словари общие на процесс, состояние генерации — своё:
+        # generation_log и filter_failures изменяемые, и общий экземпляр
+        # генератора гонялся бы между параллельными запросами.
+        self.client = get_client()
         # Модель вынесена в окружение: прежний claude-sonnet-4-20250514
         # снят с обслуживания и отвечал 404 на каждый вызов.
         self.model = os.getenv("RULEX_MODEL_GENERATION", "claude-sonnet-5")
-        self.word_manager = WordListManager()
+        self.word_manager = get_word_manager()
         self.generation_log = []
         # Батчи, которые не удалось проверить из-за сбоя API.
         # Непустой список означает, что фильтрация прошла не полностью.

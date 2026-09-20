@@ -3,9 +3,15 @@ import sys
 import os
 
 if sys.platform == 'win32':
-    sys.stdout.reconfigure(encoding='utf-8')
-    sys.stderr.reconfigure(encoding='utf-8')
+    # reconfigure есть не у всякого stdout: под тестами и некоторыми
+    # серверами поток бывает обёрнут и такого метода не имеет.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, 'reconfigure'):
+            _stream.reconfigure(encoding='utf-8')
     os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException, Cookie
 from fastapi.templating import Jinja2Templates
@@ -20,12 +26,23 @@ from database import init_db, AsyncSessionLocal
 from models import Question, User, TestResult, TestAnswer
 from auth import hash_password, verify_password, create_session, get_user_id_from_token, delete_session
 
-app = FastAPI(title="RuLex")
-
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
+    # Прогреваем словари на старте, а не на первом запросе пользователя:
+    # чтение ~12.5 МБ CSV занимает около 0.9 с, и в обработчике запроса
+    # это блокировало event loop, подвешивая сервер для всех остальных.
+    try:
+        from generator import get_word_manager
+        await asyncio.to_thread(get_word_manager)
+    except Exception as exc:
+        # Отсутствие словарей не должно мешать старту: тесты по уже
+        # сгенерированным вопросам работают и без них.
+        print(f"[WARN] Словари не прогреты: {type(exc).__name__}: {exc}")
+    yield
+
+
+app = FastAPI(title="RuLex", lifespan=lifespan)
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
