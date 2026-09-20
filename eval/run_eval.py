@@ -23,7 +23,7 @@ import os
 import statistics
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -200,7 +200,7 @@ def eval_filter(gen, rows: list[dict], use_llm: bool) -> dict:
         "heuristic_rejections": heur_reason,
         "per_word": [
             {"word": w, "truth": t, "heuristic": h}
-            for w, t, h in zip(words, truth, heur_pred)
+            for w, t, h in zip(words, truth, heur_pred, strict=True)
         ],
     }
 
@@ -208,16 +208,16 @@ def eval_filter(gen, rows: list[dict], use_llm: bool) -> dict:
         return result
 
     # Этап 2 — батч-проверка через LLM поверх выживших после эвристик
-    survivors = [w for w, p in zip(words, heur_pred) if p == "real"]
+    survivors = [w for w, p in zip(words, heur_pred, strict=True) if p == "real"]
     kept = set(gen._filter_real_words_batch(survivors, batch_size=30))
 
     combined = [
         "artifact" if (p == "artifact" or w not in kept) else "real"
-        for w, p in zip(words, heur_pred)
+        for w, p in zip(words, heur_pred, strict=True)
     ]
     result["llm_kept"] = sorted(kept)
     result["combined"] = metrics.confusion(truth, combined)
-    for item, c in zip(result["per_word"], combined):
+    for item, c in zip(result["per_word"], combined, strict=True):
         item["combined"] = c
     return result
 
@@ -358,9 +358,9 @@ def main() -> int:
     gen = QuestionGenerator()
     recorder = None if args.dry_run else LLMRecorder(gen.client, use_cache=not args.no_cache)
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     if args.label:
-        run_id = "{}-{}".format(run_id, args.label)
+        run_id = f"{run_id}-{args.label}"
 
     report = {
         "run_id": run_id,
@@ -385,14 +385,14 @@ def main() -> int:
         )
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    (RESULTS_DIR / "{}.json".format(run_id)).write_text(
+    (RESULTS_DIR / f"{run_id}.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     markdown = to_markdown(report)
-    (RESULTS_DIR / "{}.md".format(run_id)).write_text(markdown, encoding="utf-8")
+    (RESULTS_DIR / f"{run_id}.md").write_text(markdown, encoding="utf-8")
 
     print(markdown)
-    print("\nОтчёты: eval/results/{0}.json, eval/results/{0}.md".format(run_id))
+    print(f"\nОтчёты: eval/results/{run_id}.json, eval/results/{run_id}.md")
     return 0
 
 

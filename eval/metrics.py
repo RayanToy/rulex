@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import functools
 import math
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 import pymorphy3
 
@@ -76,10 +76,10 @@ def confusion(y_true: Sequence[str], y_pred: Sequence[str], positive: str = "art
     нас интересует, насколько хорошо фильтр ловит мусор."""
     if len(y_true) != len(y_pred):
         raise ValueError("длины y_true и y_pred не совпадают")
-    tp = sum(1 for t, p in zip(y_true, y_pred) if t == positive and p == positive)
-    fp = sum(1 for t, p in zip(y_true, y_pred) if t != positive and p == positive)
-    fn = sum(1 for t, p in zip(y_true, y_pred) if t == positive and p != positive)
-    tn = sum(1 for t, p in zip(y_true, y_pred) if t != positive and p != positive)
+    tp = sum(1 for t, p in zip(y_true, y_pred, strict=True) if t == positive and p == positive)
+    fp = sum(1 for t, p in zip(y_true, y_pred, strict=True) if t != positive and p == positive)
+    fn = sum(1 for t, p in zip(y_true, y_pred, strict=True) if t == positive and p != positive)
+    tn = sum(1 for t, p in zip(y_true, y_pred, strict=True) if t != positive and p != positive)
     precision = tp / (tp + fp) if (tp + fp) else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0

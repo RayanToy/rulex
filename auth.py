@@ -1,7 +1,6 @@
 import hashlib
 import secrets
 from datetime import timedelta
-from typing import Optional
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -71,7 +70,7 @@ def create_session(user_id: int) -> str:
     return token
 
 
-def get_session(token: str) -> Optional[dict]:
+def get_session(token: str) -> dict | None:
     """Получение сессии"""
     if token not in sessions:
         return None
@@ -88,7 +87,7 @@ def delete_session(token: str):
         del sessions[token]
 
 
-def get_user_id_from_token(token: str) -> Optional[int]:
+def get_user_id_from_token(token: str) -> int | None:
     """Получение user_id из токена"""
     session = get_session(token)
     if session:

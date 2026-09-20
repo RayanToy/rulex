@@ -10,7 +10,6 @@
 """
 import pytest
 
-
 ANSWER_FIELDS = ("correct", "correct_answer", "target_word")
 
 

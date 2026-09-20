@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "eval"))
 
 import metrics  # noqa: E402
+
 from auth import hash_password, needs_rehash, verify_password  # noqa: E402
 from main import calculate_level  # noqa: E402
 
