@@ -1,21 +1,24 @@
 FROM python:3.11-slim
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    RULEX_DATA_DIR=/app/var
+
 WORKDIR /app
 
-# Установка зависимостей системы
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Копирование requirements и установка пакетов
+# Зависимости — отдельным слоем: он переиспользуется, пока requirements.txt не менялся.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование проекта
 COPY . .
 
-# Порт
+# /app/data — частотные словари, они внутри образа.
+# /app/var  — изменяемые данные (SQLite), сюда монтируется том.
+RUN mkdir -p /app/var \
+    && adduser --disabled-password --gecos "" --uid 1000 app \
+    && chown -R app:app /app
+USER app
+
 EXPOSE 8000
 
-# Запуск
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
