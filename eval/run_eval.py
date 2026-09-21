@@ -249,7 +249,11 @@ def eval_generation(gen, rows: list[dict]) -> dict:
 
         distractors = q.get("distractors", []) or []
         leaks = metrics.leaked_words(q.get("definition", ""), [word, *distractors])
+        foreign = metrics.foreign_letters(q.get("definition", "") + " " + " ".join(distractors))
+        dupes = metrics.duplicate_distractors(distractors)
         items.append({
+            "foreign_letters": foreign,
+            "duplicate_distractors": dupes,
             "word": word,
             "definition": q.get("definition", ""),
             "distractors": distractors,
@@ -269,6 +273,12 @@ def eval_generation(gen, rows: list[dict]) -> dict:
             round(sum(i["has_leak"] for i in items) / len(items), 4) if items else None
         ),
         "pos_match_mean": round(statistics.mean(pos_ratios), 4) if pos_ratios else None,
+        "foreign_script_rate": (
+            round(sum(1 for i in items if i["foreign_letters"]) / len(items), 4) if items else None
+        ),
+        "duplicate_distractor_rate": (
+            round(sum(1 for i in items if i["duplicate_distractors"]) / len(items), 4) if items else None
+        ),
         "distractors_mean": (
             round(statistics.mean([i["n_distractors"] for i in items]), 2) if items else None
         ),
@@ -314,6 +324,8 @@ def to_markdown(report: dict) -> str:
             gen["yield"], gen["succeeded"], gen["attempted"]))
         lines.append("| утечка ответа в толкование | {} |".format(gen["definition_leak_rate"]))
         lines.append("| совпадение части речи у дистракторов | {} |".format(gen["pos_match_mean"]))
+        lines.append("| нерусские буквы в задании | {} |".format(gen.get("foreign_script_rate")))
+        lines.append("| повторяющиеся дистракторы | {} |".format(gen.get("duplicate_distractor_rate")))
         lines.append("| дистракторов на вопрос (среднее) | {} |".format(gen["distractors_mean"]))
         lines.append("")
 

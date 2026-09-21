@@ -123,3 +123,34 @@ class TestSharovParsing:
         manager = self._manager_for(tmp_path, monkeypatch=monkeypatch, content=(
             "Lemma\tPoS\tFreq(ipm)\n" "стол\ts\t402.5\n"))
         assert manager.get_sharov_frequency("суэссоя") == 0
+
+
+class TestContentQuality:
+    """Метрики, добавленные после разбора выдачи локальных моделей:
+    формально задание строилось, а показывать его было нельзя."""
+
+    def test_detects_chinese_in_russian_definition(self):
+        # Реальный случай из прогона qwen2.5:7b-instruct
+        assert metrics.foreign_letters("Слово,用来骂人或侮辱人的词语")
+
+    def test_detects_mixed_alphabets_inside_word(self):
+        # "вeterаны": латинские e, t, e, r среди кириллицы
+        assert metrics.foreign_letters("вeterаны в совете") == ["e", "r", "t"]
+
+    def test_clean_russian_passes(self):
+        assert metrics.foreign_letters("Крупный населённый пункт") == []
+
+    def test_punctuation_and_digits_are_not_letters(self):
+        assert metrics.foreign_letters("Толкование — 5 слов, и точка.") == []
+
+    def test_finds_duplicate_distractor(self):
+        assert metrics.duplicate_distractors(["узнать", "выяснить", "выяснить"]) == ["выяснить"]
+
+    def test_duplicates_ignore_case_and_spaces(self):
+        assert metrics.duplicate_distractors(["Стол", " стол "]) == ["стол"]
+
+    def test_unique_distractors_pass(self):
+        assert metrics.duplicate_distractors(["дом", "лес", "река"]) == []
+
+    def test_empty_values_are_skipped(self):
+        assert metrics.duplicate_distractors(["", None, "дом"]) == []

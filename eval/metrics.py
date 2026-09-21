@@ -60,6 +60,38 @@ def leaked_words(definition: str, forbidden: Sequence[str]) -> list[str]:
     return hits
 
 
+def foreign_letters(text: str) -> list[str]:
+    """Нерусские буквы в тексте, который обязан быть русским.
+
+    Замечено на qwen2.5: в толкование затекал китайский текст
+    (`Слово,用来骂人或侮辱人的词语`) и смешивались алфавиты внутри
+    одного слова (`вeterаны` — латинские e, t, e, r среди кириллицы).
+    Формально задание строится, а показывать его ученику нельзя,
+    и ни одна из прежних метрик этого не видела.
+    """
+    return sorted({
+        ch for ch in text
+        if ch.isalpha() and not ("а" <= ch.lower() <= "я" or ch.lower() == "ё")
+    })
+
+
+def duplicate_distractors(distractors: Sequence[str]) -> list[str]:
+    """Повторяющиеся варианты ответа.
+
+    Два одинаковых варианта в тесте — это не просто некрасиво:
+    ученик видит один и тот же ответ дважды, и задание теряет смысл.
+    """
+    seen, dupes = set(), []
+    for item in distractors:
+        key = (item or "").strip().lower()
+        if not key:
+            continue
+        if key in seen and key not in dupes:
+            dupes.append(key)
+        seen.add(key)
+    return dupes
+
+
 def pos_match_ratio(target: str, distractors: Iterable[str]) -> float | None:
     """Доля дистракторов, совпавших с целевым словом по части речи."""
     items = [d for d in distractors if d]
