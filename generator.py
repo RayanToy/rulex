@@ -8,8 +8,10 @@ import sys
 from pathlib import Path
 
 import pymorphy3
-from anthropic import Anthropic, APIConnectionError, APIError, APIStatusError
+from anthropic import APIConnectionError, APIError, APIStatusError
 from dotenv import load_dotenv
+
+from llm_backends import OllamaError
 
 load_dotenv()
 
@@ -197,19 +199,17 @@ class WordListManager:
 
 
 @functools.lru_cache(maxsize=1)
-def get_client() -> Anthropic:
-    """Один HTTP-клиент на процесс — иначе теряется пул соединений.
+def get_client():
+    """Один клиент на процесс — иначе теряется пул соединений.
 
-    base_url позволяет работать через совместимый шлюз: прямой доступ
-    к api.anthropic.com доступен не везде.
+    Какой именно бэкенд, решают переменные окружения (см. llm_backends):
+    облачный Anthropic, совместимый шлюз через ANTHROPIC_BASE_URL или
+    локальная модель через Ollama. Интерфейс у них одинаковый, поэтому
+    остальной код о разнице не знает.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not found")
-    return Anthropic(
-        api_key=api_key,
-        base_url=os.getenv("ANTHROPIC_BASE_URL") or None,
-    )
+    from llm_backends import build_client
+
+    return build_client()
 
 
 @functools.lru_cache(maxsize=1)
@@ -406,7 +406,8 @@ class QuestionGenerator:
 
                 real_words.extend(valid_in_batch)
 
-            except (APIStatusError, APIConnectionError, APIError) as e:
+            except (APIStatusError, APIConnectionError, APIError,
+                    OllamaError) as e:
                 # Раньше здесь в результат добавлялся ВЕСЬ батч, включая мусор:
                 # сбой API молча отключал фильтрацию, и снаружи это было не видно.
                 # Теперь батч отбрасывается, а факт деградации фиксируется.
