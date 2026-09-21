@@ -1,0 +1,380 @@
+{
+  "run_id": "20260921T123315Z-model-ornith-1-5-9b",
+  "dry_run": false,
+  "model": "ornith-1.5:9b",
+  "words_file": "eval\\words.tsv",
+  "n_words": 30,
+  "labels": {
+    "real": 19,
+    "artifact": 11
+  },
+  "filter": {
+    "heuristic": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 11,
+      "tn": 18,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "accuracy": 0.6
+    },
+    "heuristic_rejections": {
+      "всхрюкнуть": "Мало гласных (20%), вероятно артефакт"
+    },
+    "per_word": [
+      {
+        "word": "всхрюкнуть",
+        "truth": "real",
+        "heuristic": "artifact",
+        "combined": "artifact"
+      },
+      {
+        "word": "пятисторонник",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "сровняться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "кроманьонец",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "почестьмить",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "жоут",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "пажалст",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "ругатель",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "старейшинство",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "микробарограф",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "проезжаться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "иант",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "расчухать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "кучиться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "фельдшеров",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "немезид",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "робототехник",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "материальность",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "суэссоя",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "городнычий",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "окситомипин",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "перешибать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "окликаться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "вымокать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "гипотензия",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "продуктообмен",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "детоксикация",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "любовьювоспоминание",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "пурин",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "инвар",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      }
+    ],
+    "llm_kept": [
+      "вымокать",
+      "детоксикация",
+      "кучиться",
+      "материальность",
+      "окликаться",
+      "проезжаться",
+      "робототехник",
+      "ругатель",
+      "старейшинство",
+      "фельдшеров"
+    ],
+    "combined": {
+      "tp": 10,
+      "fp": 10,
+      "fn": 1,
+      "tn": 9,
+      "precision": 0.5,
+      "recall": 0.9091,
+      "f1": 0.6452,
+      "accuracy": 0.6333
+    }
+  },
+  "generation": {
+    "attempted": 19,
+    "succeeded": 5,
+    "yield": 0.2632,
+    "definition_leak_rate": 0.0,
+    "pos_match_mean": 1.0,
+    "distractors_mean": 3,
+    "items": [
+      {
+        "word": "всхрюкнуть",
+        "definition": "Сделать резкий, громкий и неприятный для слуха звук, похожий на тот, который издаёт свинья, когда она недовольна или испугана —",
+        "distractors": [
+          "заметить",
+          "услышать",
+          "увидеть"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "word": "ругатель",
+        "definition": "Тот, кто часто говорит грубые и оскорбительные слова, выражая недовольство или злобу по отношению к другим —",
+        "distractors": [
+          "человек",
+          "лицо",
+          "мужчина"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "word": "кучиться",
+        "definition": "Множество предметов или живых существ постепенно собирается в одном месте, образуя высокую горку —",
+        "distractors": [
+          "собраться",
+          "накопиться",
+          "сложиться"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "word": "окликаться",
+        "definition": "\"Люди, находящиеся на расстоянии друг от друга, говорят одни и те же слова, чтобы узнать, живы ли они и где находятся.\" —",
+        "distractors": [
+          "звать",
+          "произносить",
+          "перекликаться"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "word": "детоксикация",
+        "definition": "Устранение вредных веществ из организма человека —",
+        "distractors": [
+          "процесс",
+          "очищение",
+          "загрязнение"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      }
+    ],
+    "failures": [
+      {
+        "word": "сровняться",
+        "error": "ValueError: Не удалось найти дистракторы для 'сровняться'"
+      },
+      {
+        "word": "кроманьонец",
+        "error": "ValueError: Не удалось найти дистракторы для 'кроманьонец'"
+      },
+      {
+        "word": "старейшинство",
+        "error": "ValueError: Не удалось найти дистракторы для 'старейшинство'"
+      },
+      {
+        "word": "микробарограф",
+        "error": "ValueError: Не удалось найти дистракторы для 'микробарограф'"
+      },
+      {
+        "word": "проезжаться",
+        "error": "ValueError: Не удалось найти дистракторы для 'проезжаться'"
+      },
+      {
+        "word": "расчухать",
+        "error": "ValueError: Не удалось найти дистракторы для 'расчухать'"
+      },
+      {
+        "word": "робототехник",
+        "error": "ValueError: Не удалось найти дистракторы для 'робототехник'"
+      },
+      {
+        "word": "материальность",
+        "error": "ValueError: Не удалось найти дистракторы для 'материальность'"
+      },
+      {
+        "word": "перешибать",
+        "error": "ValueError: Не удалось найти дистракторы для 'перешибать'"
+      },
+      {
+        "word": "вымокать",
+        "error": "ValueError: Не удалось найти дистракторы для 'вымокать'"
+      },
+      {
+        "word": "гипотензия",
+        "error": "ValueError: Не удалось найти дистракторы для 'гипотензия'"
+      },
+      {
+        "word": "продуктообмен",
+        "error": "ValueError: Не удалось найти дистракторы для 'продуктообмен'"
+      },
+      {
+        "word": "пурин",
+        "error": "ValueError: Не удалось найти дистракторы для 'пурин'"
+      },
+      {
+        "word": "инвар",
+        "error": "ValueError: Не удалось найти дистракторы для 'инвар'"
+      }
+    ]
+  },
+  "usage": {
+    "calls_total": 26,
+    "calls_live": 26,
+    "calls_cached": 0,
+    "calls_without_usage": 0,
+    "usage_reliable": true,
+    "input_tokens": 9380,
+    "output_tokens": 2584,
+    "cost_usd": 0.0,
+    "latency_p50_s": 3.622,
+    "latency_p95_s": 3.831,
+    "latency_mean_s": 2.586,
+    "models": [
+      "ornith-1.5:9b"
+    ]
+  },
+  "cost_per_question": 0.0
+}

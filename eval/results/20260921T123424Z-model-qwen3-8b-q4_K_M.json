@@ -1,0 +1,564 @@
+{
+  "run_id": "20260921T123424Z-model-qwen3-8b-q4_K_M",
+  "dry_run": false,
+  "model": "qwen3:8b-q4_K_M",
+  "words_file": "eval\\words.tsv",
+  "n_words": 30,
+  "labels": {
+    "real": 19,
+    "artifact": 11
+  },
+  "filter": {
+    "heuristic": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 11,
+      "tn": 18,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "accuracy": 0.6
+    },
+    "heuristic_rejections": {
+      "всхрюкнуть": "Мало гласных (20%), вероятно артефакт"
+    },
+    "per_word": [
+      {
+        "word": "всхрюкнуть",
+        "truth": "real",
+        "heuristic": "artifact",
+        "combined": "artifact"
+      },
+      {
+        "word": "пятисторонник",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "сровняться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "кроманьонец",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "почестьмить",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "жоут",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "пажалст",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "ругатель",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "старейшинство",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "микробарограф",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "проезжаться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "иант",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "расчухать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "кучиться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "фельдшеров",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "немезид",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "робототехник",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "материальность",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "суэссоя",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "городнычий",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "окситомипин",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "перешибать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "окликаться",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "вымокать",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "гипотензия",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "продуктообмен",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "детоксикация",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "любовьювоспоминание",
+        "truth": "artifact",
+        "heuristic": "real",
+        "combined": "artifact"
+      },
+      {
+        "word": "пурин",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      },
+      {
+        "word": "инвар",
+        "truth": "real",
+        "heuristic": "real",
+        "combined": "real"
+      }
+    ],
+    "llm_kept": [
+      "вымокать",
+      "гипотензия",
+      "жоут",
+      "иант",
+      "инвар",
+      "кроманьонец",
+      "кучиться",
+      "материальность",
+      "немезид",
+      "окликаться",
+      "проезжаться",
+      "пурин",
+      "пятисторонник",
+      "расчухать",
+      "робототехник",
+      "ругатель",
+      "сровняться",
+      "старейшинство",
+      "фельдшеров"
+    ],
+    "combined": {
+      "tp": 6,
+      "fp": 5,
+      "fn": 5,
+      "tn": 14,
+      "precision": 0.5455,
+      "recall": 0.5455,
+      "f1": 0.5455,
+      "accuracy": 0.6667
+    }
+  },
+  "generation": {
+    "attempted": 19,
+    "succeeded": 19,
+    "yield": 1.0,
+    "definition_leak_rate": 0.0526,
+    "pos_match_mean": 1.0,
+    "foreign_script_rate": 0.0,
+    "duplicate_distractor_rate": 0.2105,
+    "distractors_mean": 3,
+    "items": [
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "всхрюкнуть",
+        "definition": "Быстро и громко выдохнуть воздух через нос, обычно из-за волнения или удивления —",
+        "distractors": [
+          "вздуть",
+          "взвизгнуть",
+          "взвыть"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "сровняться",
+        "definition": "Стать на один уровень с кем-то, стать равным по высоте или по значению —",
+        "distractors": [
+          "сравняться",
+          "уравняться",
+          "выровнять"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "кроманьонец",
+        "definition": "Древнее существо, обладавшее способностью создавать инструменты и украшать вещи —",
+        "distractors": [
+          "человек",
+          "обезьяна",
+          "животное"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "ругатель",
+        "definition": "Неприятное слово, которое люди произносят, чтобы выразить недовольство или обиду другому человеку —",
+        "distractors": [
+          "руга",
+          "ругательство",
+          "ругань"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [
+          "старейшина"
+        ],
+        "word": "старейшинство",
+        "definition": "Это система управления, где важные решения принимаются людьми, которые имеют больше опыта и заслуг перед обществом —",
+        "distractors": [
+          "старейшина",
+          "старейшина",
+          "старейшина"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "микробарограф",
+        "definition": "Устройство для измерения давления воздуха с высокой точностью —",
+        "distractors": [
+          "барометр",
+          "прибор",
+          "инструмент"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [
+          "проехать"
+        ],
+        "word": "проезжаться",
+        "definition": "Двигаться на машине или другом транспорте по дороге, чтобы пройти расстояние между двумя точками —",
+        "distractors": [
+          "проехать",
+          "проехать",
+          "проехать"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "расчухать",
+        "definition": "Означает сделать волосы аккуратными, уложив их в порядке —",
+        "distractors": [
+          "расчесать",
+          "причесать",
+          "убрать"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [
+          "собираться"
+        ],
+        "word": "кучиться",
+        "definition": "Множество предметов или людей становятся вместе в одном месте —",
+        "distractors": [
+          "собираться",
+          "скапливаться",
+          "собираться"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "робототехник",
+        "definition": "Человек, который занимается созданием и обслуживанием устройств, способных выполнять различные задачи самостоятельно —",
+        "distractors": [
+          "техник",
+          "инженер",
+          "мастер"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "материальность",
+        "definition": "Свойство, при котором что-то состоит из материи и может быть осязаемо —",
+        "distractors": [
+          "вещество",
+          "явление",
+          "предмет"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "перешибать",
+        "definition": "Выполнять действие, при котором что-то твёрдо и сильно ударяют, чтобы оно не оставалось целым —",
+        "distractors": [
+          "разбить",
+          "уничтожить",
+          "сломать"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "окликаться",
+        "definition": "Высказывать что-либо громко и внезапно, чтобы привлечь внимание кого-либо —",
+        "distractors": [
+          "кричать",
+          "звать",
+          "приказывать"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [
+          "вымокнуть"
+        ],
+        "word": "вымокать",
+        "definition": "Совершать действие, при котором одежда или предмет становятся мокрыми из-за длительного воздействия воды —",
+        "distractors": [
+          "вымокнуть",
+          "вымокнуть",
+          "вымокнуть"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "гипотензия",
+        "definition": "Понижение силы, с которой что-то давит на поверхность —",
+        "distractors": [
+          "гипертензия",
+          "давление",
+          "состояние"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "продуктообмен",
+        "definition": "Взаимный передача вещей между людьми для удовлетворения их потребностей —",
+        "distractors": [
+          "обмен",
+          "торговля",
+          "производство"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "детоксикация",
+        "definition": "Процесс устранения вредных веществ из организма, чтобы он работал лучше —",
+        "distractors": [
+          "очищение",
+          "отравление",
+          "восстановление"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "пурин",
+        "definition": "Органическое вещество, входящее в состав некоторых молекул, необходимых для жизни организма —",
+        "distractors": [
+          "аминокислота",
+          "нуклеотид",
+          "белок"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [],
+        "has_leak": false,
+        "pos_match_ratio": 1.0
+      },
+      {
+        "foreign_letters": [],
+        "duplicate_distractors": [],
+        "word": "инвар",
+        "definition": "Сплав, который сохраняет свою длину при изменении температуры —",
+        "distractors": [
+          "металл",
+          "сплав",
+          "материал"
+        ],
+        "n_distractors": 3,
+        "leaked_words": [
+          "Сплав"
+        ],
+        "has_leak": true,
+        "pos_match_ratio": 1.0
+      }
+    ],
+    "failures": []
+  },
+  "usage": {
+    "calls_total": 49,
+    "calls_live": 49,
+    "calls_cached": 0,
+    "calls_without_usage": 0,
+    "usage_reliable": true,
+    "input_tokens": 20476,
+    "output_tokens": 1592,
+    "cost_usd": 0.0,
+    "latency_p50_s": 0.792,
+    "latency_p95_s": 1.322,
+    "latency_mean_s": 1.216,
+    "models": [
+      "qwen3:8b-q4_K_M"
+    ]
+  },
+  "cost_per_question": 0.0
+}
