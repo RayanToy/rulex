@@ -18,12 +18,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "eval"))
+from run_eval import safe_name  # noqa: E402
+
 DEFAULT_MODELS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"]
 
 
 def run_one(model: str, words: Path, extra_env: dict) -> dict | None:
     env = {**os.environ, **extra_env, "RULEX_MODEL_GENERATION": model}
-    label = "model-" + model.replace(".", "-")
+    label = safe_name("model-" + model)
     cmd = [
         sys.executable, str(ROOT / "eval" / "run_eval.py"),
         "--words", str(words), "--label", label, "--no-cache",

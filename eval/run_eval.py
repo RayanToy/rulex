@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -35,6 +36,17 @@ import metrics  # noqa: E402
 
 RESULTS_DIR = ROOT / "eval" / "results"
 CACHE_PATH = ROOT / "eval" / ".cache.json"
+
+
+def safe_name(value: str) -> str:
+    """Имя, пригодное для файловой системы.
+
+    Идентификаторы моделей содержат двоеточие (`qwen2.5:7b-instruct`),
+    а Windows трактует его как разделитель альтернативного потока NTFS:
+    файл не падает с ошибкой, а молча пишется в скрытый поток и потом
+    не находится. Точка тоже заменяется — ради единообразия имён.
+    """
+    return re.sub(r"[^A-Za-z0-9_-]+", "-", value).strip("-")
 
 
 # --------------------------- перехват вызовов API ---------------------------
@@ -360,7 +372,7 @@ def main() -> int:
 
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     if args.label:
-        run_id = f"{run_id}-{args.label}"
+        run_id = f"{run_id}-{safe_name(args.label)}"
 
     report = {
         "run_id": run_id,
