@@ -423,6 +423,42 @@ class QuestionGenerator:
                  f"батч(ей) из {total_batches} не проверено и отброшено")
         return real_words
 
+    def _is_dictionary_word(self, word: str) -> bool:
+        """Слово подтверждено словарём — обращаться к модели не нужно.
+
+        Два независимых источника: словарь OpenCorpora внутри pymorphy3
+        (`word_is_known` — именно в словаре, а не угадано по аналогии)
+        и частотный словарь Шарова на 51 682 леммы.
+        """
+        return (
+            morph.word_is_known(word)
+            or self.word_manager.get_sharov_frequency(word) > 0
+        )
+
+    def _confirm_real(self, words: list[str]) -> list[str]:
+        """Отбор реальных слов каскадом: сначала словари, потом модель.
+
+        Замер на корпусе: словари подтверждают 61% слов (от 92% во
+        2 классе до 37% в 11), и эти слова в модель не уходят вовсе —
+        3909 батч-вызовов превращаются в 1521.
+
+        Порядок именно такой, а не наоборот, потому что на размеченной
+        выборке словарная проверка оказалась не хуже модели: F1 0.83
+        против 0.74–0.83 при одинаковом recall 0.91. А на 220 словах
+        методы разошлись в 41 случае, и там, где словарь знает слово,
+        а модель его отвергла (талидомид, седок, жульен, фораминифер),
+        права чаще оказывалась словарная проверка.
+        """
+        confirmed = [w for w in words if self._is_dictionary_word(w)]
+        unknown = [w for w in words if not self._is_dictionary_word(w)]
+        _log(
+            f"[INFO] Словари подтвердили {len(confirmed)} из {len(words)}; "
+            f"через модель пойдут {len(unknown)}"
+        )
+        if not unknown:
+            return confirmed
+        return confirmed + self._filter_real_words_batch(unknown, batch_size=30)
+
     def _check_word_suitability(self, word: str) -> tuple[bool, str]:
         """Проверка слова через LLM на пригодность для теста словарного запаса"""
 
@@ -745,19 +781,15 @@ class QuestionGenerator:
         check_pool_size = min(len(clean_words), count * 5)
         check_pool = clean_words[:check_pool_size]
 
-        print(f"[INFO] Проверяю реальность {len(check_pool)} слов через LLM...")
-        real_words = self._filter_real_words_batch(check_pool, batch_size=30)
-
-        print(f"[INFO] После LLM-проверки: {len(real_words)} реальных слов")
+        real_words = self._confirm_real(check_pool)
 
         # ── Шаг 3: если мало — добираем из оставшихся ────────────────────
         if len(real_words) < count * 2:
-            print("[INFO] Мало реальных слов, проверяю дополнительный батч...")
+            _log("[INFO] Мало реальных слов, проверяю дополнительный батч...")
             extra_pool = clean_words[check_pool_size : check_pool_size + count * 3]
             if extra_pool:
-                extra_real = self._filter_real_words_batch(extra_pool, batch_size=30)
-                real_words.extend(extra_real)
-                print(f"[INFO] После дополнительной проверки: {len(real_words)} реальных слов")
+                real_words.extend(self._confirm_real(extra_pool))
+                _log(f"[INFO] После дополнительной проверки: {len(real_words)} реальных слов")
 
         if len(real_words) < 5:
             raise ValueError(f"Критически мало реальных слов: {len(real_words)}")
