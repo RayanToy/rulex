@@ -714,7 +714,10 @@ async def auto_generate_questions(data: TestStartRequest, session_token: str | N
             )
 
         # Генерируем 20 вопросов
-        questions = generator.generate_questions_for_class(grade, 20)
+        # Асинхронная версия: слова генерируются параллельно и вне
+        # event loop. Синхронная делала 3-6 вызовов LLM на слово подряд
+        # и на время генерации подвешивала сервер для всех клиентов.
+        questions = await generator.agenerate_questions_for_class(grade, 20)
 
         # Явная проверка результата
         if not questions:

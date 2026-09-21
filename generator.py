@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import functools
 import json
@@ -698,16 +699,12 @@ class QuestionGenerator:
         self._log("complete", {"success": True})
         return result
 
-    def generate_questions_for_class(self, word_class: int, count: int = 20) -> list[dict]:
-        """
-        Автоматическая генерация вопросов для класса.
+    def _prepare_candidates(self, word_class: int, count: int) -> tuple[list[str], list[str]]:
+        """Шаги 1–4: эвристики, батч-проверка реальности, распределение частотности.
 
-        Изменения:
-        1. Эвристическая фильтрация артефактов (быстро, без LLM)
-        2. Батч-проверка реальности слов через LLM (экономия ~95% вызовов)
-        3. Увеличенный пул кандидатов
+        Вынесено отдельно, чтобы синхронная и асинхронная генерация
+        использовали ровно одну и ту же подготовку.
         """
-
         all_words = self.word_manager.get_words_for_class(word_class)
 
         if not all_words:
@@ -773,9 +770,20 @@ class QuestionGenerator:
         )
         random.shuffle(freq_distribution)
 
-        # ── Шаг 5: основной цикл генерации ───────────────────────────────
-        # Берём до 8× слов на случай отсева при генерации
         candidates = real_words[:min(len(real_words), count * 8)]
+        return candidates, freq_distribution
+
+    def generate_questions_for_class(self, word_class: int, count: int = 20) -> list[dict]:
+        """
+        Автоматическая генерация вопросов для класса.
+
+        Изменения:
+        1. Эвристическая фильтрация артефактов (быстро, без LLM)
+        2. Батч-проверка реальности слов через LLM (экономия ~95% вызовов)
+        3. Увеличенный пул кандидатов
+        """
+
+        candidates, freq_distribution = self._prepare_candidates(word_class, count)
 
         questions = []
 
@@ -815,6 +823,78 @@ class QuestionGenerator:
                 f"Словарь класса {word_class} содержит слишком много артефактов или специальных терминов."
             )
 
+        return questions
+
+    def _make_one(self, word: str, word_class: int, freq_type: str) -> dict | None:
+        """Одно задание целиком. Своё состояние на вызов.
+
+        Свой экземпляр генератора нужен потому, что generation_log
+        изменяемый: при параллельном запуске задачи затирали бы логи
+        друг друга. Клиент и словари при этом общие (см. lru_cache),
+        так что создание экземпляра почти бесплатно.
+        """
+        worker = QuestionGenerator()
+        suitable, reason = worker._check_word_suitability(word)
+        if not suitable:
+            _log(f"[SKIP] {word}: {reason}")
+            return None
+        try:
+            return worker.generate_question(word, word_class, freq_type)
+        except (ValueError, APIStatusError, APIConnectionError, APIError, OllamaError) as exc:
+            _log(f"[ERROR] {word}: {type(exc).__name__}")
+            return None
+
+    async def agenerate_questions_for_class(
+        self, word_class: int, count: int = 20, concurrency: int | None = None
+    ) -> list[dict]:
+        """Асинхронная генерация: вызовы уходят из event loop в поток.
+
+        Главное здесь — НЕ ускорение, а то, что обработчик перестаёт
+        блокировать сервер. Синхронная версия делает 3–6 вызовов LLM
+        на слово подряд, и на время генерации (минуты) приложение
+        не отвечало никому.
+
+        Про параллелизм. По умолчанию он ВЫКЛЮЧЕН (concurrency=1),
+        и это результат замера, а не осторожность: на шести словах
+        пять параллельных задач дали через шлюз router.cheap 251 секунду
+        против 53 последовательных, то есть впятеро хуже — запросы
+        троттлятся и SDK уходит в ретраи. На локальной Ollama выигрыша
+        тоже нет: она обслуживает один GPU и выполняет запросы по очереди.
+        Повышать RULEX_GEN_CONCURRENCY имеет смысл только против прямого
+        API и только с замером — вслепую это делает хуже.
+        """
+        if concurrency is None:
+            concurrency = max(1, int(os.getenv("RULEX_GEN_CONCURRENCY") or 1))
+        candidates, freq_distribution = await asyncio.to_thread(
+            self._prepare_candidates, word_class, count
+        )
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def one(word: str, freq_type: str) -> dict | None:
+            async with semaphore:
+                return await asyncio.to_thread(self._make_one, word, word_class, freq_type)
+
+        questions: list[dict] = []
+        pending = list(candidates)
+        while pending and len(questions) < count:
+            wave, pending = pending[:count - len(questions)], pending[count - len(questions):]
+            tasks = [
+                one(word, freq_distribution[(len(questions) + i) % len(freq_distribution)]
+                    if freq_distribution else "medium")
+                for i, word in enumerate(wave)
+            ]
+            for result in await asyncio.gather(*tasks):
+                if result is not None and len(questions) < count:
+                    questions.append(result)
+            _log(f"[INFO] Готово {len(questions)}/{count}")
+
+        if len(questions) < max(5, count // 2):
+            raise ValueError(
+                f"Критически мало вопросов: {len(questions)}/{count}. "
+                f"Словарь класса {word_class} содержит слишком много артефактов "
+                f"или специальных терминов."
+            )
         return questions
 
     def has_word_list(self, word_class: int) -> bool:
