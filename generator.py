@@ -488,6 +488,9 @@ class QuestionGenerator:
         """Получение дистракторов"""
         pos = self._get_pos(word)
         pos_rus = {'NOUN': 'существительное', 'VERB': 'глагол', 'INFN': 'инфинитив'}.get(pos, 'существительное')
+        example = ("дом, лес, река, гора, поле, берег, холм, овраг, поляна, роща"
+                   if pos == 'NOUN'
+                   else "бежать, идти, прыгать, ползти, лететь, плыть, ехать, спешить, брести, мчаться")
 
         prompt = f"""Для теста на словарный запас нужны слова-дистракторы к слову "{word}" ({pos_rus}).
 
@@ -499,40 +502,100 @@ class QuestionGenerator:
 5. Общеупотребительные слова (не специальные термины)
 6. НЕ географические названия, НЕ этнонимы
 7. Одно слово каждое, без дефисов
+8. Все десять слов РАЗНЫЕ, повторы недопустимы
 
-Напиши 10 подходящих слов через запятую, без пояснений:"""
+ФОРМАТ ОТВЕТА — одна строка: 10 слов через запятую.
+Без нумерации, без пояснений, без предисловий и выводов.
+Не обсуждай само слово "{word}" и не оценивай запрос — просто дай список.
+
+Пример правильного ответа:
+{example}
+
+Твой ответ:"""
 
         response = self._call_llm(prompt, max_tokens=150)
         self._log("distractors_response", {"word": word, "response": response})
 
-        # Парсинг
-        if ':' in response:
-            response = response.split(':', 1)[-1]
+        return self._parse_distractors(response, word)
 
-        candidates = [w.strip().lower().rstrip('.').rstrip(',') for w in response.split(',')]
+    @staticmethod
+    def _extract_list_line(response: str) -> str:
+        """Строка со списком из ответа модели.
 
-        valid_distractors = []
+        Прежний код брал всё после первого двоеточия. На модели, которая
+        вместо списка пишет рассуждение («такого слова не существует...»),
+        это попадало в середину прозы и не давало ни одного кандидата.
+        Берём самую «списочную» строку: с запятыми и без длинных слов.
+        """
+        lines = [ln.strip() for ln in response.splitlines() if ln.strip()]
+        # Нумерованный или маркированный список -> склеиваем в одну строку
+        bullets = [re.sub(r'^[\s\-\*•]*\d*[.)]?\s*', '', ln)
+                   for ln in lines if re.match(r'^[\s\-\*•]*\d*[.)]?\s*\S+$', ln)]
+        if len(bullets) >= 3 and all(len(b.split()) <= 2 for b in bullets):
+            return ", ".join(bullets)
+
+        # Иначе — строка с наибольшим числом запятых
+        best = max(lines, key=lambda ln: ln.count(","), default="")
+        if best.count(",") >= 2:
+            # Отрезаем возможную преамбулу вида «Вот слова: a, b, c»
+            return best.split(":", 1)[-1] if ":" in best else best
+        return response
+
+    def _parse_distractors(self, response: str, word: str) -> list[str]:
+        """Разбор ответа в список дистракторов.
+
+        Отличия от прежнего разбора: снимается нумерация, отсеиваются
+        повторы (модели охотно выдают одно слово по три раза — у qwen3
+        это давало 21% заданий с двумя одинаковыми вариантами) и часть
+        речи проверяется по ВСЕМ разборам pymorphy3, а не только по
+        самому вероятному: «род» как существительное иначе теряется,
+        потому что первым разбором идёт глагольная форма.
+        """
         target_pos = self._get_pos(word)
+        text = self._extract_list_line(response)
+        raw = re.split(r"[,;\n]+", text)
 
-        for candidate in candidates:
-            if not candidate or len(candidate) < 2:
-                continue
-            if not candidate.isalpha() or '-' in candidate:
+        seen_lemmas = {self._get_lemma(word)}
+        distractors = []
+        for candidate in raw:
+            candidate = candidate.strip().lower().strip('.,;:"\'()[]')
+            candidate = re.sub(r'^\d+[.)]\s*', '', candidate)
+            if not candidate or len(candidate) < 2 or not candidate.isalpha():
                 continue
             if candidate == word.lower():
                 continue
-
-            # Проверка части речи
-            cand_pos = self._get_pos(candidate)
-            if cand_pos != target_pos:
+            if not self._pos_matches(candidate, target_pos):
                 continue
 
-            valid_distractors.append(candidate)
+            lemma = self._get_lemma(candidate)
+            if lemma in seen_lemmas:
+                continue  # и дубль, и однокоренное с целевым словом
+            seen_lemmas.add(lemma)
 
-            if len(valid_distractors) >= 3:
+            distractors.append(candidate)
+            if len(distractors) >= 3:
                 break
 
-        return valid_distractors
+        return distractors
+
+    @staticmethod
+    def _pos_matches(candidate: str, target_pos: str | None) -> bool:
+        """Совпадает ли часть речи хотя бы по одному разбору.
+
+        pymorphy3 возвращает разборы по убыванию вероятности, и у
+        омонимов верный не всегда первый: «род» разбирается сначала как
+        глагольная форма, и нормальное существительное отбрасывалось.
+        """
+        if target_pos is None:
+            return False
+        for parse in morph.parse(candidate):
+            pos = parse.tag.POS
+            if pos == target_pos:
+                return True
+            # INFN и VERB — одна часть речи для целей теста
+            if {pos, target_pos} <= {'VERB', 'INFN'}:
+                return True
+        return False
 
     def _get_definition(self, word: str, distractors: list[str], target_class: int) -> str:
         """Получение толкования"""

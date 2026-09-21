@@ -154,3 +154,54 @@ class TestContentQuality:
 
     def test_empty_values_are_skipped(self):
         assert metrics.duplicate_distractors(["", None, "дом"]) == []
+
+
+class TestDistractorParsing:
+    """Разбор ответа модели в список дистракторов.
+
+    Прежний разбор брал всё после первого двоеточия и делил по запятым.
+    На модели, которая вместо списка пишет рассуждение, это попадало
+    в середину прозы; повторы не отсеивались (у qwen3 — 21% заданий
+    с двумя одинаковыми вариантами); часть речи проверялась только
+    по первому разбору pymorphy3.
+    """
+
+    @staticmethod
+    def parse(response, word):
+        import generator
+        gen = generator.QuestionGenerator.__new__(generator.QuestionGenerator)
+        return gen._parse_distractors(response, word)
+
+    def test_plain_comma_list(self):
+        result = self.parse("человек, житель, племя, народ", "кроманьонец")
+        assert result == ["человек", "житель", "племя"]
+
+    def test_numbered_list(self):
+        result = self.parse("1. человек\n2. житель\n3. племя", "кроманьонец")
+        assert result == ["человек", "житель", "племя"]
+
+    def test_preamble_is_stripped(self):
+        result = self.parse("Вот слова: человек, житель, племя", "кроманьонец")
+        assert result == ["человек", "житель", "племя"]
+
+    def test_duplicates_are_dropped(self):
+        result = self.parse(
+            "промокнуть, пропитаться, промокнуть, пропитаться, увянуть", "вымокать")
+        assert len(result) == len(set(result))
+        assert "промокнуть" in result
+
+    def test_prose_refusal_yields_nothing(self):
+        """Модель спорит вместо ответа — лучше пусто, чем мусор из прозы."""
+        prose = ('Уважаемый пользователь, отмечу проблему.\n\n'
+                 'Слово "сровняться" — орфографическая ошибка, такого слова нет.')
+        assert self.parse(prose, "сровняться") == []
+
+    def test_target_word_is_excluded(self):
+        result = self.parse("лес, дерево, поле, роща", "лес")
+        assert "лес" not in result
+
+    def test_homonym_noun_is_kept(self):
+        """«род» pymorphy3 первым разбором считает глаголом, но это
+        нормальное существительное и терять его нельзя."""
+        result = self.parse("род, племя, народ", "кроманьонец")
+        assert "род" in result
