@@ -28,13 +28,15 @@ from auth import (
     needs_rehash,
     verify_password,
 )
-from database import AsyncSessionLocal, init_db
+from database import AsyncSessionLocal, migrate
 from models import Question, TestAnswer, TestResult, User
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    # Миграции Alembic вместо create_all: тот не умеет менять уже
+    # существующие таблицы. Синхронные — поэтому в потоке.
+    await asyncio.to_thread(migrate)
     # Прогреваем словари на старте, а не на первом запросе пользователя:
     # чтение ~12.5 МБ CSV занимает около 0.9 с, и в обработчике запроса
     # это блокировало event loop, подвешивая сервер для всех остальных.
@@ -130,7 +132,7 @@ def set_session_cookie(response: JSONResponse, token: str) -> JSONResponse:
 async def get_current_user(token: str) -> User | None:
     if not token:
         return None
-    user_id = get_user_id_from_token(token)
+    user_id = await get_user_id_from_token(token)
     if not user_id:
         return None
     async with AsyncSessionLocal() as session:
@@ -238,7 +240,7 @@ async def register(data: UserRegister):
         await session.commit()
         await session.refresh(user)
 
-        token = create_session(user.id)
+        token = await create_session(user.id)
 
         response = JSONResponse(content={"message": "OK", "user": user.to_dict()})
         return set_session_cookie(response, token)
@@ -262,7 +264,7 @@ async def login(data: UserLogin):
             user.hashed_password = hash_password(data.password)
             await session.commit()
 
-        token = create_session(user.id)
+        token = await create_session(user.id)
 
         response = JSONResponse(content={"message": "OK", "user": user.to_dict()})
         return set_session_cookie(response, token)
@@ -271,7 +273,7 @@ async def login(data: UserLogin):
 @app.post("/api/auth/logout")
 async def logout(session_token: str | None = Cookie(None)):
     if session_token:
-        delete_session(session_token)
+        await delete_session(session_token)
     response = JSONResponse(content={"message": "OK"})
     response.delete_cookie("session_token")
     return response

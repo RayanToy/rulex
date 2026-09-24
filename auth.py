@@ -4,15 +4,17 @@ from datetime import timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from sqlalchemy import delete, select
 
-from models import utcnow
+from database import AsyncSessionLocal
+from models import Session, utcnow
 
 # Argon2id — алгоритм, предназначенный для паролей: медленный и требовательный
 # к памяти. Раньше здесь был одинарный SHA-256 с солью: он считается мгновенно,
 # и перебор по словарю на GPU идёт миллиардами попыток в секунду.
 _hasher = PasswordHasher()
 
-sessions = {}
+SESSION_TTL = timedelta(days=7)
 
 
 def hash_password(password: str) -> str:
@@ -59,37 +61,54 @@ def needs_rehash(hashed_password: str) -> bool:
         return True
 
 
-def create_session(user_id: int) -> str:
-    """Создание сессии"""
+def _hash_token(token: str) -> str:
+    """Токен в базе не хранится — только его SHA-256.
+
+    Медленный хеш вроде Argon2 здесь не нужен: токен случайный,
+    256 бит энтропии, перебирать нечего. Нужно лишь, чтобы утечка
+    базы не давала готовых токенов для входа.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def create_session(user_id: int) -> str:
+    """Создать сессию и вернуть токен для куки.
+
+    Раньше сессии жили в словаре внутри процесса: перезапуск разлогинивал
+    всех, а при нескольких воркерах вход не работал вовсе — токен,
+    выданный одним процессом, другой не знал.
+    """
     token = secrets.token_urlsafe(32)
-    sessions[token] = {
-        "user_id": user_id,
-        "created_at": utcnow(),
-        "expires_at": utcnow() + timedelta(days=7)
-    }
+    now = utcnow()
+    async with AsyncSessionLocal() as db:
+        # Попутно убираем истёкшие сессии этого пользователя, чтобы таблица не росла
+        await db.execute(delete(Session).where(Session.user_id == user_id,
+                                               Session.expires_at < now))
+        db.add(Session(token_hash=_hash_token(token), user_id=user_id,
+                       created_at=now, expires_at=now + SESSION_TTL))
+        await db.commit()
     return token
 
 
-def get_session(token: str) -> dict | None:
-    """Получение сессии"""
-    if token not in sessions:
+async def get_user_id_from_token(token: str | None) -> int | None:
+    """Кому принадлежит токен; None — если сессии нет или она истекла."""
+    if not token:
         return None
-    session = sessions[token]
-    if utcnow() > session["expires_at"]:
-        del sessions[token]
-        return None
-    return session
+    async with AsyncSessionLocal() as db:
+        record = (await db.execute(
+            select(Session).where(Session.token_hash == _hash_token(token))
+        )).scalar_one_or_none()
+        if record is None:
+            return None
+        if utcnow() > record.expires_at:
+            await db.delete(record)
+            await db.commit()
+            return None
+        return record.user_id
 
 
-def delete_session(token: str):
-    """Удаление сессии"""
-    if token in sessions:
-        del sessions[token]
-
-
-def get_user_id_from_token(token: str) -> int | None:
-    """Получение user_id из токена"""
-    session = get_session(token)
-    if session:
-        return session["user_id"]
-    return None
+async def delete_session(token: str) -> None:
+    """Выход: сессия удаляется из базы, токен перестаёт работать сразу."""
+    async with AsyncSessionLocal() as db:
+        await db.execute(delete(Session).where(Session.token_hash == _hash_token(token)))
+        await db.commit()

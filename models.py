@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import declarative_base
 
 
@@ -63,7 +63,7 @@ class Question(Base):
     generation_log = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
-    created_by = Column(Integer, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     def to_dict(self):
         options = [self.correct_answer]
@@ -91,7 +91,7 @@ class TestResult(Base):
     __tablename__ = "test_results"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Результаты
     score = Column(Integer, nullable=False)
@@ -122,8 +122,11 @@ class TestAnswer(Base):
     __tablename__ = "test_answers"
 
     id = Column(Integer, primary_key=True, index=True)
-    test_result_id = Column(Integer, nullable=False, index=True)
-    question_id = Column(Integer, nullable=False)
+    test_result_id = Column(Integer, ForeignKey("test_results.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    # SET NULL: удаление вопроса из банка не стирает историю ученика —
+    # ответ и верный вариант хранятся в самой строке
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="SET NULL"), nullable=True)
 
     is_correct = Column(Boolean, nullable=False)
     user_answer = Column(String(100), nullable=True)
@@ -138,7 +141,7 @@ class GenerationLog(Base):
     __tablename__ = "generation_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    question_id = Column(Integer, nullable=True)
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=True)
     step = Column(String(50), nullable=False)
     input_data = Column(Text, nullable=True)
     output_data = Column(Text, nullable=True)
@@ -147,3 +150,15 @@ class GenerationLog(Base):
     success = Column(Boolean, default=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
+
+
+class Session(Base):
+    """Сессия входа. Хранится SHA-256 токена, а не сам токен:
+    утечка базы не даёт готовых токенов."""
+    __tablename__ = "sessions"
+
+    token_hash = Column(String(64), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)
