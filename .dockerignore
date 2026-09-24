@@ -1,10 +1,23 @@
-__pycache__
-*.pyc
-*.pyo
+# В отличие от .gitignore, шаблон без ** действует только в корне контекста:
+# «*.db» не исключил бы var/questions.db, и локальная база с пользователями
+# попала бы в образ, а оттуда — в пустой том при первом запуске.
+var
+**/*.db
+**/*.db-journal
+**/__pycache__
+**/*.pyc
+**/*.pyo
+*.log
+
+# Секреты и окружение разработчика
 .env
 .git
 .gitignore
-*.db
+.github
 .venv
 venv
-*.log
+.pytest_cache
+.ruff_cache
+
+# Кэш ответов модели из eval-прогонов
+eval/.cache.json
