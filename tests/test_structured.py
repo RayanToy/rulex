@@ -229,3 +229,41 @@ class TestEvalCache:
 
         assert plain.content[0].type == "text"
         assert len(client.calls) == 2
+
+
+class TestDefinitionValidation:
+    """Толкование, по которому виден ответ, не должно попасть в банк вопросов.
+
+    Раньше, исчерпав попытки исправления, код сохранял последний вариант
+    как есть. Три реальных случая из прогона Sonnet 5 ниже — все они были
+    отказами модели, записанными в поле «толкование».
+    """
+
+    @pytest.fixture
+    def gen(self):
+        return make_generator(FakeClient())
+
+    @pytest.mark.parametrize("word,definition", [
+        ("микробарограф", "Я не могу создать корректное толкование для слова "
+                          "\"микробарограф\" в рамках теста на словарный запас"),
+        ("гипотензия", "Я не могу выполнить этот запрос. \"Гипотензия\" — это "
+                       "медицинский термин, обозначающий пониженное давление"),
+        ("пурин", "Слово \"пурин\" — это узкоспециальный химический термин, "
+                  "который не подходит для теста"),
+    ])
+    def test_real_refusals_from_eval_are_rejected(self, gen, word, definition):
+        with pytest.raises(ValueError):
+            gen._validate_definition(definition, word)
+
+    def test_answer_in_other_case_form_is_rejected(self, gen):
+        with pytest.raises(ValueError):
+            gen._validate_definition("Место, где много деревьев, как в лесу", "лес")
+
+    def test_normal_definition_passes(self, gen):
+        gen._validate_definition("Прибор, который записывает изменения давления воздуха",
+                                 "микробарограф")
+
+    def test_similar_prefix_is_not_a_leak(self, gen):
+        """Сравнение по первым буквам считало «столица» однокоренным «столу».
+        Финальная проверка идёт по лемме и такого не делает."""
+        gen._validate_definition("Главный город страны, где находится правительство", "стол")

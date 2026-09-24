@@ -815,7 +815,37 @@ class QuestionGenerator:
             definition = definition.strip().lstrip('-—').strip()
             self._log("definition_corrected", {"attempt": attempt + 1, "definition": definition})
 
+        self._validate_definition(definition, word)
         return definition
+
+    # Признаки того, что модель не дала толкование, а отказалась или
+    # стала рассуждать о запросе. Проверяется только начало ответа.
+    _REFUSAL_MARKERS = (
+        "я не могу", "не могу выполнить", "не могу создать", "к сожалению",
+        "не подходит для теста", "это узкоспециальн", "как языковая модель",
+    )
+
+    def _validate_definition(self, definition: str, word: str) -> None:
+        """Последний рубеж: толкование, по которому ответ очевиден, не сохраняется.
+
+        Раньше, исчерпав три попытки исправления, код возвращал последний
+        вариант как есть — даже если в нём по-прежнему стояло загаданное
+        слово. Так в банк вопросов попадали отказы модели: «Я не могу
+        создать корректное толкование для слова "микробарограф"…» сохранялось
+        как толкование, и ответ был написан прямо в задании.
+
+        Здесь критерий строгий и без ложных срабатываний: совпадение леммы
+        с загаданным словом, а не сравнение по первым буквам, как в цикле
+        исправлений.
+        """
+        head = definition.lower()[:120]
+        if any(marker in head for marker in self._REFUSAL_MARKERS):
+            raise ValueError(f"Модель отказалась толковать '{word}'")
+
+        target = self._get_lemma(word)
+        for token in re.findall(r"[а-яёА-ЯЁ]+", definition):
+            if self._get_lemma(token.lower()) == target:
+                raise ValueError(f"Толкование для '{word}' содержит само слово")
 
     def generate_question(self, word: str, word_class: int = 6, frequency_type: str = "medium") -> dict:
         """Генерация одного вопроса"""
