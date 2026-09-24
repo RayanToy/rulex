@@ -18,9 +18,9 @@ from anthropic import NotFoundError
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import batch_runner  # noqa: E402
-import generator  # noqa: E402
-from llm_backends import OllamaError  # noqa: E402
+from app.services import batches as batch_runner  # noqa: E402
+from app.services import generator, wordlists  # noqa: E402
+from app.services.llm import OllamaError  # noqa: E402
 
 
 def text_content(value):
@@ -162,28 +162,28 @@ class TestFallback:
 class TestVerdictStore:
     @pytest.fixture(autouse=True)
     def isolated_store(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(generator, "VERDICTS_PATH", tmp_path / "verdicts.tsv")
-        generator.get_verdicts.cache_clear()
+        monkeypatch.setattr(wordlists, "VERDICTS_PATH", tmp_path / "verdicts.tsv")
+        wordlists.get_verdicts.cache_clear()
         yield
-        generator.get_verdicts.cache_clear()
+        wordlists.get_verdicts.cache_clear()
 
     def test_roundtrip(self):
-        generator.append_verdicts([("стол", "real", "dict"), ("жоут", "artifact", "llm:m:sync")])
-        assert generator.get_verdicts() == {"стол": "real", "жоут": "artifact"}
+        wordlists.append_verdicts([("стол", "real", "dict"), ("жоут", "artifact", "llm:m:sync")])
+        assert wordlists.get_verdicts() == {"стол": "real", "жоут": "artifact"}
 
     def test_append_is_visible_without_restart(self):
-        generator.append_verdicts([("стол", "real", "dict")])
-        assert "стол" in generator.get_verdicts()
-        generator.append_verdicts([("книга", "real", "dict")])
-        assert "книга" in generator.get_verdicts()
+        wordlists.append_verdicts([("стол", "real", "dict")])
+        assert "стол" in wordlists.get_verdicts()
+        wordlists.append_verdicts([("книга", "real", "dict")])
+        assert "книга" in wordlists.get_verdicts()
 
     def test_cascade_uses_stored_verdicts_before_model(self):
-        generator.append_verdicts([
+        wordlists.append_verdicts([
             ("суэссоя", "artifact", "llm:m:sync"),      # мусор, модель уже решила
             ("робототехник", "real", "llm:m:sync"),     # вне словарей, модель уже решила
         ])
         gen = generator.QuestionGenerator.__new__(generator.QuestionGenerator)
-        gen.word_manager = generator.get_word_manager()
+        gen.word_manager = wordlists.get_word_manager()
 
         def model_must_not_be_called(*_a, **_k):
             raise AssertionError("вердикт сохранён — модель вызывать не нужно")

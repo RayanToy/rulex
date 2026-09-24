@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-ROOT = Path(__file__).resolve().parent
+from app import PROJECT_ROOT as ROOT
 
 # Каталог изменяемых данных. Отделён от data/ — там лежат частотные словари,
 # которые версионируются вместе с кодом. В Docker сюда монтируется том,

@@ -1,6 +1,6 @@
 """Общие фикстуры.
 
-Переменные окружения выставляются ДО импорта приложения: database.py
+Переменные окружения выставляются ДО импорта приложения: app/core/database.py
 определяет путь к БД на этапе импорта модуля.
 """
 import os
@@ -18,12 +18,12 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "tests-placeholder")
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-import main  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def client():
-    with TestClient(main.app) as test_client:
+    with TestClient(app) as test_client:
         yield test_client
 
 

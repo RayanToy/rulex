@@ -6,8 +6,8 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from sqlalchemy import delete, select
 
-from database import AsyncSessionLocal
-from models import Session, utcnow
+from app.core.database import AsyncSessionLocal
+from app.core.models import Session, utcnow
 
 # Argon2id — алгоритм, предназначенный для паролей: медленный и требовательный
 # к памяти. Раньше здесь был одинарный SHA-256 с солью: он считается мгновенно,

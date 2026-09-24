@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy.orm import Session  # noqa: E402
 
-from database import engine  # noqa: E402
-from models import User  # noqa: E402
+from app.core.database import engine  # noqa: E402
+from app.core.models import User  # noqa: E402
 
 
 def main() -> int:

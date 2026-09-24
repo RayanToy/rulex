@@ -10,8 +10,8 @@ sys.path.insert(0, str(ROOT / "eval"))
 
 import metrics  # noqa: E402
 
-from auth import hash_password, needs_rehash, verify_password  # noqa: E402
-from main import calculate_level  # noqa: E402
+from app.core.security import hash_password, needs_rehash, verify_password  # noqa: E402
+from app.services.assessment import calculate_level  # noqa: E402
 
 
 class TestPasswordHashing:
@@ -96,10 +96,10 @@ class TestSharovParsing:
     ValueError гасился через continue, и словарь молча оставался пустым."""
 
     def _manager_for(self, tmp_path, content, monkeypatch):
-        import generator
+        from app.services import wordlists
         (tmp_path / "sharov.csv").write_text(content, encoding="utf-8")
-        monkeypatch.setattr(generator, "DATA_DIR", tmp_path)
-        manager = generator.WordListManager.__new__(generator.WordListManager)
+        monkeypatch.setattr(wordlists, "DATA_DIR", tmp_path)
+        manager = wordlists.WordListManager.__new__(wordlists.WordListManager)
         manager.freq_lists, manager.relative_lists, manager.sharov = {}, {}, {}
         manager._load_sharov()
         return manager
@@ -168,7 +168,7 @@ class TestDistractorParsing:
 
     @staticmethod
     def parse(response, word):
-        import generator
+        from app.services import generator
         gen = generator.QuestionGenerator.__new__(generator.QuestionGenerator)
         return gen._parse_distractors(response, word)
 

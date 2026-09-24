@@ -416,7 +416,7 @@ def main() -> int:
     if args.dry_run:
         os.environ.setdefault("ANTHROPIC_API_KEY", "dry-run-placeholder")
 
-    from generator import QuestionGenerator
+    from app.services.generator import QuestionGenerator
 
     gen = QuestionGenerator()
     recorder = None if args.dry_run else LLMRecorder(gen.client, use_cache=not args.no_cache)

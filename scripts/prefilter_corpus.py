@@ -32,8 +32,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import generator  # noqa: E402
-from batch_runner import run_requests  # noqa: E402
+from app.services import generator, wordlists  # noqa: E402
+from app.services.batches import run_requests  # noqa: E402
 
 CHUNK = 30  # столько же слов, сколько в живом батч-фильтре
 
@@ -50,7 +50,7 @@ def main() -> int:
     args = parser.parse_args()
 
     gen = generator.QuestionGenerator()
-    verdicts = generator.get_verdicts()
+    verdicts = wordlists.get_verdicts()
     log = generator._log
 
     # Кандидаты — как в _prepare_candidates: базовая проверка и эвристики
@@ -76,7 +76,7 @@ def main() -> int:
     log(f"[INFO] кандидатов {len(words)}: вердикт уже есть у {already}, "
         f"словари решают {len(pending_dict)}, модели нужно {len(pending_llm)}")
 
-    generator.append_verdicts([(w, "real", "dict") for w in pending_dict])
+    wordlists.append_verdicts([(w, "real", "dict") for w in pending_dict])
 
     if args.limit:
         pending_llm = pending_llm[: args.limit]
@@ -106,7 +106,7 @@ def main() -> int:
         real = set(gen._real_words_from_answer(chunk, content))
         source = f"llm:{gen.model}:{mode}"
         rows += [(w, "real" if w in real else "artifact", source) for w in chunk]
-    generator.append_verdicts(rows)
+    wordlists.append_verdicts(rows)
 
     n_real = sum(1 for _, v, _ in rows if v == "real")
     log(f"[INFO] режим: {mode}, время: {elapsed:.0f} с")

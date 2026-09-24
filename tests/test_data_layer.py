@@ -19,9 +19,8 @@ from sqlalchemy.exc import IntegrityError
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import auth  # noqa: E402
-import database  # noqa: E402
-from models import utcnow  # noqa: E402
+from app.core import database, security  # noqa: E402
+from app.core.models import utcnow  # noqa: E402
 
 
 def _cfg(url: str) -> Config:
@@ -105,7 +104,7 @@ def _register(client, name):
 class TestSessionsInDatabase:
     def test_no_in_memory_session_store(self):
         """Прежний словарь в памяти процесса терялся при каждом перезапуске."""
-        assert not hasattr(auth, "sessions")
+        assert not hasattr(security, "sessions")
 
     def test_session_is_persisted_and_token_is_hashed(self, client):
         token, user_id = _register(client, "session_owner")

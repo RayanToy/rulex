@@ -23,7 +23,7 @@ from collections.abc import Callable
 
 from anthropic import APIConnectionError, APIError, APIStatusError, NotFoundError, PermissionDeniedError
 
-from llm_backends import OllamaError
+from app.services.llm import OllamaError
 
 # Ответ на один запрос: блоки content либо None, если запрос не выполнен.
 Results = dict[str, list | None]

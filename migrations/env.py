@@ -1,6 +1,6 @@
 """Окружение Alembic.
 
-Адрес базы берётся из database.DATABASE_URL, а не из alembic.ini: у
+Адрес базы берётся из app.core.database.DATABASE_URL, а не из alembic.ini: у
 приложения и миграций должен быть один источник правды, иначе миграции
 легко накатить не на ту базу.
 
@@ -19,7 +19,7 @@ from sqlalchemy import create_engine
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import models  # noqa: E402
+from app.core import models  # noqa: E402
 
 config = context.config
 target_metadata = models.Base.metadata
@@ -33,7 +33,7 @@ def _url() -> str:
     url = config.get_main_option("sqlalchemy.url")
     if url:
         return url
-    from database import DATABASE_URL
+    from app.core.database import DATABASE_URL
     return DATABASE_URL
 
 

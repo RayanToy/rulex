@@ -14,8 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import generator  # noqa: E402
-import llm_backends  # noqa: E402
+from app.services import generator, llm  # noqa: E402
 
 
 def tool_use(name, payload):
@@ -116,7 +115,7 @@ class TestSuitability:
     def test_api_failure_fails_closed(self):
         """Раньше сбой API объявлял слово пригодным и пропускал в тест
         топонимы и узкие термины. Теперь сбой = не пригодно."""
-        gen = make_generator(FakeClient(error=llm_backends.OllamaError("нет связи")))
+        gen = make_generator(FakeClient(error=llm.OllamaError("нет связи")))
         suitable, reason = gen._check_word_suitability("стол")
         assert suitable is False
         assert "Не удалось проверить" in reason
@@ -159,8 +158,8 @@ class TestOllamaAdapter:
             return {"message": {"content": reply_content},
                     "prompt_eval_count": 10, "eval_count": 5, "done_reason": "stop"}
 
-        monkeypatch.setattr(llm_backends.OllamaClient, "post", fake_post)
-        return llm_backends.OllamaClient(model="local"), sent
+        monkeypatch.setattr(llm.OllamaClient, "post", fake_post)
+        return llm.OllamaClient(model="local"), sent
 
     def test_tool_becomes_format_and_tool_use(self, monkeypatch):
         client, sent = self._client(monkeypatch, json.dumps({"real_words": ["стол"]}))
