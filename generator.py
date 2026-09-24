@@ -199,6 +199,49 @@ class WordListManager:
         return []
 
 
+# По умолчанию рядом со словарями: вердикты — дорогие производные данные,
+# их разумно версионировать вместе с корпусом, как lock-файл.
+VERDICTS_PATH = Path(os.getenv("RULEX_VERDICTS_PATH") or DATA_DIR / "word_verdicts.tsv")
+_VERDICTS_HEADER = (
+    "# Вердикты о реальности слов корпуса, посчитанные офлайн\n"
+    "# (scripts/prefilter_corpus.py). Колонки: слово, вердикт, источник.\n"
+    "# Вердикт о слове не меняется от запроса к запросу, поэтому считается\n"
+    "# один раз, а не при каждой генерации.\n"
+)
+
+
+@functools.lru_cache(maxsize=1)
+def get_verdicts() -> dict[str, str]:
+    """Сохранённые вердикты: слово -> "real" | "artifact".
+
+    Кэшируется на процесс; новые вердикты становятся видны после
+    перезапуска — для офлайн-предфильтрации этого достаточно.
+    """
+    verdicts: dict[str, str] = {}
+    if not VERDICTS_PATH.exists():
+        return verdicts
+    for line in VERDICTS_PATH.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[1] in ("real", "artifact"):
+            verdicts[parts[0]] = parts[1]
+    return verdicts
+
+
+def append_verdicts(rows: list[tuple[str, str, str]]) -> None:
+    """Дописать вердикты (слово, вердикт, источник) в хранилище."""
+    if not rows:
+        return
+    new_file = not VERDICTS_PATH.exists()
+    with open(VERDICTS_PATH, "a", encoding="utf-8") as f:
+        if new_file:
+            f.write(_VERDICTS_HEADER)
+        for word, verdict, source in rows:
+            f.write(f"{word}\t{verdict}\t{source}\n")
+    get_verdicts.cache_clear()
+
+
 @functools.lru_cache(maxsize=1)
 def get_client():
     """Один клиент на процесс — иначе теряется пул соединений.
@@ -383,6 +426,19 @@ class QuestionGenerator:
         в промпте все три облачные модели вызывали инструмент в 3 случаях
         из 3; для редкого отказа есть запаска.
         """
+        params = self._structured_params(prompt, tool, max_tokens, effort)
+        response = self.client.messages.create(**params)
+        return self._parse_structured(response.content, tool)
+
+    def _structured_params(
+        self, prompt: str, tool: dict, max_tokens: int = 1024, effort: str | None = None
+    ) -> dict:
+        """Параметры структурного запроса.
+
+        Вынесены отдельно, чтобы обычный вызов и запрос в Batches API
+        собирались одинаково: иначе батч мерил бы не то же самое, что
+        живой путь.
+        """
         params = {
             "model": self.model,
             "max_tokens": max_tokens,
@@ -396,17 +452,18 @@ class QuestionGenerator:
         }
         if effort:
             params["output_config"] = {"effort": effort}
+        return params
 
-        response = self.client.messages.create(**params)
-
-        for block in response.content:
+    def _parse_structured(self, content, tool: dict) -> tuple[dict | None, str]:
+        """(данные инструмента, текст-запаска) из блоков ответа."""
+        for block in content or []:
             if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == tool["name"]:
                 self.structured_stats["tool"] += 1
                 return dict(block.input), ""
 
         self.structured_stats["fallback"] += 1
         text = "\n".join(
-            block.text for block in response.content
+            block.text for block in content or []
             if getattr(block, "type", None) == "text" and hasattr(block, "text")
         )
         return None, text.strip()
@@ -457,24 +514,14 @@ class QuestionGenerator:
 
         return False, "OK"
 
-    def _filter_real_words_batch(self, words: list[str], batch_size: int = 30) -> list[str]:
+    def _real_words_prompt(self, batch: list[str]) -> str:
+        """Промпт проверки реальности для одного батча слов.
+
+        Отдельный метод, чтобы живой фильтр и офлайн-предфильтрация
+        корпуса (scripts/prefilter_corpus.py) спрашивали модель одинаково.
         """
-        Проверяет сразу пачку слов одним вызовом LLM.
-        Отсеивает выдуманные слова типа 'травие', 'восьмибрат', 'плэда'.
-
-        При сбое API батч ОТБРАСЫВАЕТСЯ, а не пропускается целиком:
-        лучше потерять слова, чем тихо пустить мусор в тест.
-        Факт деградации виден в self.filter_failures.
-        """
-        real_words = []
-        self.filter_failures = []
-        total_batches = (len(words) + batch_size - 1) // batch_size
-
-        for i in range(0, len(words), batch_size):
-            batch = words[i:i + batch_size]
-            words_str = ', '.join(batch)
-
-            prompt = f"""Ты эксперт русского языка и лексикограф.
+        words_str = ', '.join(batch)
+        return f"""Ты эксперт русского языка и лексикограф.
 
 Из списка слов выбери ТОЛЬКО те, которые реально существуют в стандартном русском языке и есть в словарях (Ожегов, РАС, Викисловарь).
 
@@ -497,28 +544,49 @@ class QuestionGenerator:
 
 В ответ включи ТОЛЬКО реально существующие слова из этого списка, в том же написании."""
 
+    def _real_words_params(self, batch: list[str]) -> dict:
+        """Параметры запроса проверки реальности — и для живого вызова,
+        и для Batches API."""
+        # 30 слов заметно длиннее прежних 200 токенов: ответ
+        # обрезался, и валидные слова молча терялись.
+        return self._structured_params(
+            self._real_words_prompt(batch), self.TOOL_REAL_WORDS,
+            max_tokens=1024, effort="low")
+
+    def _real_words_from_answer(self, batch: list[str], content) -> list[str]:
+        """Какие слова батча модель подтвердила — по блокам её ответа."""
+        data, text = self._parse_structured(content, self.TOOL_REAL_WORDS)
+        if data is not None:
+            confirmed = [self._clean_token(w) for w in data.get("real_words", [])]
+        else:
+            # Запаска на случай, когда модель ответила текстом
+            confirmed = [self._clean_token(w) for w in re.split(r"[,\n;]+", text) if w.strip()]
+        confirmed_set = {w for w in confirmed if w}
+        # Оставляем только те, что были в батче И подтверждены: модель
+        # иногда «исправляет» слово, и исправленного в батче нет.
+        return [w for w in batch if w.lower() in confirmed_set]
+
+    def _filter_real_words_batch(self, words: list[str], batch_size: int = 30) -> list[str]:
+        """
+        Проверяет сразу пачку слов одним вызовом LLM.
+        Отсеивает выдуманные слова типа 'травие', 'восьмибрат', 'плэда'.
+
+        При сбое API батч ОТБРАСЫВАЕТСЯ, а не пропускается целиком:
+        лучше потерять слова, чем тихо пустить мусор в тест.
+        Факт деградации виден в self.filter_failures.
+        """
+        real_words = []
+        self.filter_failures = []
+        total_batches = (len(words) + batch_size - 1) // batch_size
+
+        for i in range(0, len(words), batch_size):
+            batch = words[i:i + batch_size]
             try:
-                # 30 слов заметно длиннее прежних 200 токенов: ответ
-                # обрезался, и валидные слова молча терялись.
-                data, text = self._call_llm_structured(
-                    prompt, self.TOOL_REAL_WORDS, max_tokens=1024, effort="low")
-
-                if data is not None:
-                    confirmed = [self._clean_token(w) for w in data.get("real_words", [])]
-                else:
-                    # Запаска на случай, когда модель ответила текстом
-                    confirmed = [self._clean_token(w)
-                                 for w in re.split(r"[,\n;]+", text) if w.strip()]
-
-                # Оставляем только те что были в батче И подтверждены
-                confirmed_set = {w for w in confirmed if w}
-
-                valid_in_batch = [w for w in batch if w.lower() in confirmed_set]
-                rejected = [w for w in batch if w.lower() not in confirmed_set]
-
+                response = self.client.messages.create(**self._real_words_params(batch))
+                valid_in_batch = self._real_words_from_answer(batch, response.content)
+                rejected = [w for w in batch if w not in valid_in_batch]
                 if rejected:
-                    print(f"[FAKE] Отсеяно {len(rejected)} вымышленных слов: {', '.join(rejected[:5])}")
-
+                    _log(f"[FAKE] Отсеяно {len(rejected)} вымышленных слов: {', '.join(rejected[:5])}")
                 real_words.extend(valid_in_batch)
 
             except (APIStatusError, APIConnectionError, APIError,
@@ -550,23 +618,25 @@ class QuestionGenerator:
         )
 
     def _confirm_real(self, words: list[str]) -> list[str]:
-        """Отбор реальных слов каскадом: сначала словари, потом модель.
+        """Отбор реальных слов каскадом: сохранённые вердикты, словари, модель.
 
-        Замер на корпусе: словари подтверждают 61% слов (от 92% во
-        2 классе до 37% в 11), и эти слова в модель не уходят вовсе —
-        3909 батч-вызовов превращаются в 1521.
-
-        Порядок именно такой, а не наоборот, потому что на размеченной
-        выборке словарная проверка оказалась не хуже модели: F1 0.83
-        против 0.74–0.83 при одинаковом recall 0.91. А на 220 словах
-        методы разошлись в 41 случае, и там, где словарь знает слово,
-        а модель его отвергла (талидомид, седок, жульен, фораминифер),
-        права чаще оказывалась словарная проверка.
+        1. Вердикты, посчитанные офлайн (scripts/prefilter_corpus.py): вердикт
+           о слове не меняется от запроса к запросу, и пересчитывать его
+           при каждой генерации незачем.
+        2. Словари: подтверждают 61% корпуса (от 92% во 2 классе до 37%
+           в 11). На 220 размеченных словах каскад словари -> модель дал
+           F1 0.86 против 0.78 у словарей и 0.75 у модели по отдельности.
+        3. Модель — только для того, что не решено первыми двумя шагами.
         """
-        confirmed = [w for w in words if self._is_dictionary_word(w)]
-        unknown = [w for w in words if not self._is_dictionary_word(w)]
+        verdicts = get_verdicts()
+        stored_real = [w for w in words if verdicts.get(w) == "real"]
+        undecided = [w for w in words if w not in verdicts]
+
+        confirmed = stored_real + [w for w in undecided if self._is_dictionary_word(w)]
+        unknown = [w for w in undecided if not self._is_dictionary_word(w)]
         _log(
-            f"[INFO] Словари подтвердили {len(confirmed)} из {len(words)}; "
+            f"[INFO] Из {len(words)}: вердикт сохранён у {len(words) - len(undecided)}, "
+            f"словари подтвердили {len(confirmed) - len(stored_real)}, "
             f"через модель пойдут {len(unknown)}"
         )
         if not unknown:
