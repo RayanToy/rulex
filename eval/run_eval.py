@@ -55,7 +55,10 @@ class LLMRecorder:
     """Оборачивает client.messages.create: пишет usage/латентность и кэширует ответы.
 
     Кэш нужен, чтобы повторный прогон на тех же промптах не стоил денег.
-    Ключ — хэш от модели, system, messages и max_tokens.
+    Ключ — хэш от модели, system, messages, max_tokens, tools и output_config.
+    Хранятся блоки ответа целиком: текст и вызовы инструментов. Блоки
+    рассуждения не хранятся — на повторе они не нужны, а текстовый блок
+    ищется по типу, поэтому их отсутствие ничего не ломает.
     """
 
     def __init__(self, client, use_cache: bool = True):
@@ -72,17 +75,50 @@ class LLMRecorder:
 
     @staticmethod
     def _key(kwargs) -> str:
+        # tools и output_config входят в ключ: иначе структурный и обычный
+        # запрос с одинаковым промптом делили бы одну запись кэша.
         payload = json.dumps(
             {
                 "model": kwargs.get("model"),
                 "system": kwargs.get("system"),
                 "messages": kwargs.get("messages"),
                 "max_tokens": kwargs.get("max_tokens"),
+                "tools": kwargs.get("tools"),
+                "output_config": kwargs.get("output_config"),
             },
             ensure_ascii=False,
             sort_keys=True,
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _dump_blocks(content) -> list[dict]:
+        """Блоки ответа в виде, пригодном для кэша: текст и вызовы инструментов.
+
+        Раньше кэшировался только текст, и на повторном прогоне
+        структурный ответ возвращался текстом — харнесс показал бы 0%
+        структурных ответов, то есть измерял бы сам себя.
+        """
+        blocks = []
+        for block in content or []:
+            kind = getattr(block, "type", None)
+            if kind == "text" and hasattr(block, "text"):
+                blocks.append({"type": "text", "text": block.text})
+            elif kind == "tool_use":
+                blocks.append({"type": "tool_use", "name": block.name,
+                               "input": dict(block.input)})
+        return blocks
+
+    @staticmethod
+    def _load_blocks(hit: dict) -> list:
+        if "blocks" in hit:
+            return [
+                SimpleNamespace(type="tool_use", id="cached", name=b["name"], input=b["input"])
+                if b["type"] == "tool_use" else SimpleNamespace(type="text", text=b["text"])
+                for b in hit["blocks"]
+            ]
+        # записи кэша старого формата
+        return [SimpleNamespace(type="text", text=hit.get("text", ""))]
 
     def __call__(self, **kwargs):
         key = self._key(kwargs)
@@ -100,8 +136,8 @@ class LLMRecorder:
             })
             return SimpleNamespace(
                 stop_reason="end_turn",
-                # type="text" обязателен: потребитель отбирает блоки по типу
-                content=[SimpleNamespace(type="text", text=hit["text"])],
+                # type обязателен: потребитель отбирает блоки по типу
+                content=self._load_blocks(hit),
                 usage=SimpleNamespace(
                     input_tokens=hit["input_tokens"],
                     output_tokens=hit["output_tokens"],
@@ -115,13 +151,6 @@ class LLMRecorder:
         usage = getattr(response, "usage", None)
         in_tok = getattr(usage, "input_tokens", 0) or 0
         out_tok = getattr(usage, "output_tokens", 0) or 0
-        # Текстовый блок не обязательно первый: при включённом рассуждении
-        # content[0] — ThinkingBlock без поля text. Харнесс не должен падать
-        # там, где измеряемый код работает, иначе метрика измеряет сама себя.
-        text = "\n".join(
-            block.text for block in (response.content or [])
-            if getattr(block, "type", None) == "text" and hasattr(block, "text")
-        )
 
         self.calls.append({
             "model": model,
@@ -135,7 +164,7 @@ class LLMRecorder:
 
         if self.use_cache:
             self.cache[key] = {
-                "text": text,
+                "blocks": self._dump_blocks(response.content),
                 "input_tokens": in_tok,
                 "output_tokens": out_tok,
             }
@@ -329,6 +358,16 @@ def to_markdown(report: dict) -> str:
         lines.append("| дистракторов на вопрос (среднее) | {} |".format(gen["distractors_mean"]))
         lines.append("")
 
+    structured = report.get("structured") or {}
+    if structured.get("share") is not None:
+        lines.append("## Структурированные ответы\n")
+        lines.append("| ответ | вызовов |")
+        lines.append("|---|---|")
+        lines.append("| по схеме (tool use) | {} |".format(structured.get("tool", 0)))
+        lines.append("| текстом, разобран запаской | {} |".format(structured.get("fallback", 0)))
+        lines.append("| доля структурных | {:.0%} |".format(structured["share"]))
+        lines.append("")
+
     usage = report.get("usage") or {}
     if usage:
         lines.append("## Стоимость и латентность\n")
@@ -403,6 +442,12 @@ def main() -> int:
         report["generation"] = eval_generation(gen, rows)
         report["usage"] = recorder.summary()
         recorder.flush()
+        stats = dict(getattr(gen, "structured_stats", {}) or {})
+        total = sum(stats.values())
+        report["structured"] = {
+            **stats,
+            "share": round(stats.get("tool", 0) / total, 4) if total else None,
+        }
         done = report["generation"]["succeeded"]
         report["cost_per_question"] = (
             round(report["usage"]["cost_usd"] / done, 4) if done else None

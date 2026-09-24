@@ -241,6 +241,59 @@ class QuestionGenerator:
 6. Слова должны быть общеупотребительными в русском языке
 7. Значение слова должно быть понятно из общего образования, а не из специальных знаний"""
 
+    # Схемы ответов. strict: true — вход инструмента валидируется по схеме,
+    # поэтому для strict нужны additionalProperties: false и required.
+    TOOL_REAL_WORDS = {
+        "name": "report_real_words",
+        "description": "Сообщить, какие слова из списка реально существуют в русском языке.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "real_words": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Реально существующие слова из списка, в исходном написании",
+                },
+            },
+            "required": ["real_words"],
+            "additionalProperties": False,
+        },
+    }
+
+    TOOL_SUITABILITY = {
+        "name": "report_suitability",
+        "description": "Сообщить, подходит ли слово для теста на словарный запас школьника.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "suitable": {"type": "boolean"},
+                "reason": {"type": "string", "description": "Краткое объяснение"},
+            },
+            "required": ["suitable", "reason"],
+            "additionalProperties": False,
+        },
+    }
+
+    TOOL_DISTRACTORS = {
+        "name": "report_distractors",
+        "description": "Сообщить слова-дистракторы для тестового задания.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "distractors": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Десять разных слов, по одному слову в элементе",
+                },
+            },
+            "required": ["distractors"],
+            "additionalProperties": False,
+        },
+    }
+
     def __init__(self):
         # Клиент и словари общие на процесс, состояние генерации — своё:
         # generation_log и filter_failures изменяемые, и общий экземпляр
@@ -254,6 +307,10 @@ class QuestionGenerator:
         # Батчи, которые не удалось проверить из-за сбоя API.
         # Непустой список означает, что фильтрация прошла не полностью.
         self.filter_failures: list[dict] = []
+        # Сколько раз ответ пришёл структурой, а сколько раз пришлось
+        # откатиться на разбор текста. Совместимые шлюзы умеют молча
+        # выбрасывать параметры запроса, и без счётчика этого не видно.
+        self.structured_stats = {"tool": 0, "fallback": 0}
 
     def _log(self, step: str, data: dict):
         self.generation_log.append({"step": step, **data})
@@ -305,6 +362,65 @@ class QuestionGenerator:
                 f"блоки: {[getattr(b, 'type', '?') for b in response.content]})"
             )
         return "\n".join(parts).strip()
+
+    def _call_llm_structured(
+        self, prompt: str, tool: dict, max_tokens: int = 1024, effort: str | None = None
+    ) -> tuple[dict | None, str]:
+        """Вызов с ответом по JSON-схеме через строгий tool use.
+
+        Возвращает (данные, текст). Данные — вход инструмента, провалидированный
+        по схеме (`strict: true`); если модель вместо вызова ответила текстом,
+        данные None, а текст уходит в разбор-запаску.
+
+        Почему инструмент, а не output_config.format. Замер на шлюзе
+        router.cheap: format молча выбрасывается — запрос проходит без ошибки,
+        а модель отвечает markdown-списком с пояснениями. Инструменты шлюз
+        пропускает.
+
+        Почему tool_choice auto, а не принудительный. У Sonnet 5 и Opus 5
+        рассуждение включено по умолчанию, и принудительный выбор инструмента
+        с ним несовместим — API отвечает 400. С auto и явной инструкцией
+        в промпте все три облачные модели вызывали инструмент в 3 случаях
+        из 3; для редкого отказа есть запаска.
+        """
+        params = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "system": self.SYSTEM_CONTEXT,
+            "messages": [{
+                "role": "user",
+                "content": f"{prompt}\n\nОтветь, вызвав инструмент {tool['name']}.",
+            }],
+            "tools": [tool],
+            "tool_choice": {"type": "auto"},
+        }
+        if effort:
+            params["output_config"] = {"effort": effort}
+
+        response = self.client.messages.create(**params)
+
+        for block in response.content:
+            if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == tool["name"]:
+                self.structured_stats["tool"] += 1
+                return dict(block.input), ""
+
+        self.structured_stats["fallback"] += 1
+        text = "\n".join(
+            block.text for block in response.content
+            if getattr(block, "type", None) == "text" and hasattr(block, "text")
+        )
+        return None, text.strip()
+
+    @staticmethod
+    def _clean_token(token: str) -> str:
+        """Слово из текстового ответа без markdown и пунктуации.
+
+        Модели оформляют списки жирным (`**стол**`) и кодом (`` `стол` ``).
+        Прежний разбор снимал только точки и запятые, и выделенное слово
+        не совпадало с исходным — реальное слово тихо считалось отвергнутым.
+        """
+        token = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", token)
+        return token.strip().strip("*_`'\"«».,;:()[]").strip().lower()
 
     def _is_artifact(self, word: str) -> tuple[bool, str]:
         """
@@ -379,25 +495,23 @@ class QuestionGenerator:
 Список для проверки:
 {words_str}
 
-Напиши ТОЛЬКО реальные существующие слова через запятую, без пояснений и нумерации:"""
+В ответ включи ТОЛЬКО реально существующие слова из этого списка, в том же написании."""
 
             try:
-                # 30 слов через запятую заметно длиннее прежних 200 токенов:
-                # ответ обрезался, и валидные слова молча терялись.
-                response = self._call_llm(prompt, max_tokens=1024, effort="low")
+                # 30 слов заметно длиннее прежних 200 токенов: ответ
+                # обрезался, и валидные слова молча терялись.
+                data, text = self._call_llm_structured(
+                    prompt, self.TOOL_REAL_WORDS, max_tokens=1024, effort="low")
 
-                # Парсим ответ
-                if ':' in response:
-                    response = response.split(':', 1)[-1]
-
-                confirmed = [
-                    w.strip().lower().rstrip('.').rstrip(',')
-                    for w in response.split(',')
-                    if w.strip()
-                ]
+                if data is not None:
+                    confirmed = [self._clean_token(w) for w in data.get("real_words", [])]
+                else:
+                    # Запаска на случай, когда модель ответила текстом
+                    confirmed = [self._clean_token(w)
+                                 for w in re.split(r"[,\n;]+", text) if w.strip()]
 
                 # Оставляем только те что были в батче И подтверждены
-                confirmed_set = set(confirmed)
+                confirmed_set = {w for w in confirmed if w}
 
                 valid_in_batch = [w for w in batch if w.lower() in confirmed_set]
                 rejected = [w for w in batch if w.lower() not in confirmed_set]
@@ -473,28 +587,32 @@ class QuestionGenerator:
 - Имя собственное
 - Слово, требующее специальных знаний для понимания
 
-Слово ПОДХОДИТ, если это общеупотребительное слово, значение которого можно объяснить без специальных знаний.
-
-Ответь СТРОГО в формате:
-ПОДХОДИТ: да/нет
-ПРИЧИНА: краткое объяснение"""
+Слово ПОДХОДИТ, если это общеупотребительное слово, значение которого можно объяснить без специальных знаний."""
 
         try:
-            response = self._call_llm(prompt, max_tokens=100, effort="low")
-
-            is_suitable = "ПОДХОДИТ: да" in response.lower() or "подходит: да" in response.lower()
-
-            # Извлекаем причину
-            reason = "OK" if is_suitable else "Не подходит для теста"
-            if "ПРИЧИНА:" in response:
-                reason = response.split("ПРИЧИНА:")[-1].strip()
-
-            self._log("word_check", {"word": word, "suitable": is_suitable, "reason": reason})
-
-            return is_suitable, reason
-        except Exception as e:
+            # Прежний разбор: `"ПОДХОДИТ: да" in response.lower()` — левая часть
+            # никогда не срабатывала (верхний регистр ищется в нижнем), а на
+            # ответе «Подходит — да» не срабатывала и правая.
+            data, text = self._call_llm_structured(
+                prompt, self.TOOL_SUITABILITY, max_tokens=512, effort="low")
+        except (APIStatusError, APIConnectionError, APIError, OllamaError) as e:
+            # Раньше здесь возвращалось (True, ...): сбой API объявлял слово
+            # пригодным и молча пропускал в тест топонимы и узкие термины.
+            # Та же ошибка, что была в батч-фильтре; закрываемся так же.
             self._log("word_check_error", {"word": word, "error": str(e)})
-            return True, "Не удалось проверить"
+            return False, f"Не удалось проверить: {type(e).__name__}"
+
+        if data is not None:
+            is_suitable = bool(data.get("suitable"))
+            reason = str(data.get("reason") or ("OK" if is_suitable else "Не подходит"))
+        else:
+            # Запаска: ищем явное «да»/«нет» в тексте
+            lowered = text.lower()
+            is_suitable = bool(re.search(r"подходит\W{0,5}да\b", lowered)) and "не подходит" not in lowered
+            reason = text[:200] or "Не удалось разобрать ответ"
+
+        self._log("word_check", {"word": word, "suitable": is_suitable, "reason": reason})
+        return is_suitable, reason
 
     def _is_basic_valid(self, word: str) -> tuple[bool, str]:
         """Базовая проверка слова (без LLM)"""
@@ -541,19 +659,18 @@ class QuestionGenerator:
 7. Одно слово каждое, без дефисов
 8. Все десять слов РАЗНЫЕ, повторы недопустимы
 
-ФОРМАТ ОТВЕТА — одна строка: 10 слов через запятую.
-Без нумерации, без пояснений, без предисловий и выводов.
-Не обсуждай само слово "{word}" и не оценивай запрос — просто дай список.
+Дай 10 слов. Не обсуждай само слово "{word}" и не оценивай запрос.
 
-Пример правильного ответа:
-{example}
+Пример подходящего набора для другого слова:
+{example}"""
 
-Твой ответ:"""
+        data, text = self._call_llm_structured(prompt, self.TOOL_DISTRACTORS, max_tokens=1024)
+        self._log("distractors_response", {"word": word, "structured": data is not None,
+                                           "response": data if data is not None else text})
 
-        response = self._call_llm(prompt, max_tokens=150)
-        self._log("distractors_response", {"word": word, "response": response})
-
-        return self._parse_distractors(response, word)
+        if data is not None:
+            return self._select_distractors(data.get("distractors", []), word)
+        return self._parse_distractors(text, word)
 
     @staticmethod
     def _extract_list_line(response: str) -> str:
@@ -588,15 +705,22 @@ class QuestionGenerator:
         самому вероятному: «род» как существительное иначе теряется,
         потому что первым разбором идёт глагольная форма.
         """
-        target_pos = self._get_pos(word)
         text = self._extract_list_line(response)
-        raw = re.split(r"[,;\n]+", text)
+        return self._select_distractors(re.split(r"[,;\n]+", text), word)
 
+    def _select_distractors(self, candidates: list[str], word: str) -> list[str]:
+        """Отбор дистракторов из кандидатов — общий для структурного ответа
+        и для разбора текста.
+
+        Схема гарантирует форму ответа (список строк), но не лингвистику:
+        повторы, другая часть речи и однокоренные с целевым словом
+        приходят и в валидном JSON, поэтому проверки те же.
+        """
+        target_pos = self._get_pos(word)
         seen_lemmas = {self._get_lemma(word)}
         distractors = []
-        for candidate in raw:
-            candidate = candidate.strip().lower().strip('.,;:"\'()[]')
-            candidate = re.sub(r'^\d+[.)]\s*', '', candidate)
+        for candidate in candidates:
+            candidate = self._clean_token(str(candidate))
             if not candidate or len(candidate) < 2 or not candidate.isalpha():
                 continue
             if candidate == word.lower():

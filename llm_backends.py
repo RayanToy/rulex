@@ -49,9 +49,15 @@ class _OllamaMessages:
         self._backend = backend
 
     def create(self, *, model=None, max_tokens=None, system=None,
-               messages=None, output_config=None, **_ignored):
+               messages=None, output_config=None, tools=None, **_ignored):
         # output_config.effort — облачное понятие, у Ollama его нет.
         # Игнорируем осознанно, а не роняем запрос.
+        #
+        # Инструменты переводим в собственный механизм Ollama: параметр
+        # format принимает JSON-схему и ограничивает вывод ею. Ответ
+        # возвращаем блоком tool_use — так вызывающий код одинаков для
+        # облака и локальной модели.
+        tool = tools[0] if tools else None
         payload = {
             "model": model or self._backend.model,
             "messages": (
@@ -67,12 +73,27 @@ class _OllamaMessages:
                 "seed": self._backend.seed,
             },
         }
+        if tool is not None:
+            payload["format"] = tool["input_schema"]
+
         data = self._backend.post("/api/chat", payload)
         text = strip_thinking((data.get("message") or {}).get("content", ""))
 
+        content = [SimpleNamespace(type="text", text=text)]
+        if tool is not None:
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            # Невалидный JSON отдаём текстом: пусть решает разбор-запаска,
+            # а не падает весь запрос.
+            if isinstance(parsed, dict):
+                content = [SimpleNamespace(type="tool_use", id="ollama",
+                                           name=tool["name"], input=parsed)]
+
         return SimpleNamespace(
             # Форма ответа как у Anthropic SDK: список блоков с типом.
-            content=[SimpleNamespace(type="text", text=text)],
+            content=content,
             usage=SimpleNamespace(
                 input_tokens=data.get("prompt_eval_count", 0) or 0,
                 output_tokens=data.get("eval_count", 0) or 0,
