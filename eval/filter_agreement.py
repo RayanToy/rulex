@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import io
 import os
 import sys
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-import generator  # noqa: E402
+from app.services import generator  # noqa: E402
 
 WORDS_FILE = ROOT / "eval" / "filter_agreement_words.tsv"
 RESULTS = ROOT / "eval" / "results"
@@ -38,6 +39,9 @@ def load_words() -> list[tuple[str, bool]]:
 
 
 def main() -> int:
+    # Аргументов нет, но --help не должен запускать платный прогон
+    argparse.ArgumentParser(description=__doc__,
+                            formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
     words = load_words()
     out = io.StringIO()
 
@@ -46,8 +50,11 @@ def main() -> int:
 
     kept = set(gen._filter_real_words_batch([w for w, _ in words], batch_size=30))
     if gen.filter_failures:
-        print(f"ВНИМАНИЕ: {len(gen.filter_failures)} батчей отброшено из-за сбоя API",
-              file=out)
+        # Слова из упавшего батча выглядят как «LLM отверг» — такие цифры
+        # нельзя писать поверх настоящих результатов
+        print(f"[ERROR] {len(gen.filter_failures)} батчей не выполнено из-за сбоя API, "
+              f"результаты не записаны", file=sys.stderr)
+        return 1
 
     rows = [(w, known, w in kept) for w, known in words]
     agree = [r for r in rows if r[1] == r[2]]
