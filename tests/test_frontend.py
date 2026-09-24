@@ -30,6 +30,35 @@ def test_every_inline_handler_is_defined(name):
     assert not missing, f"{name}: обработчики без функции в app.js: {sorted(missing)}"
 
 
+# Текстовые поля, которые пишут модель, преподаватель или сам пользователь.
+# Числа и значения-перечисления (id, score, level) сюда не входят.
+FREE_TEXT = re.compile(r"\b(question|target_word|definition|correct_answer|distractor_\d|"
+                       r"username|full_name|email|message|detail|option|word)\b")
+
+
+def interpolations(js: str) -> list[str]:
+    """Выражения внутри ${…} с учётом вложенных скобок."""
+    found, start = [], js.find("${")
+    while start != -1:
+        depth, i = 1, start + 2
+        while depth:
+            depth += {"{": 1, "}": -1}.get(js[i], 0)
+            i += 1
+        found.append(js[start + 2:i - 1].strip())
+        start = js.find("${", i)
+    return found
+
+
+def test_free_text_is_escaped_before_insertion():
+    """Толкования и дистракторы пишет модель или преподаватель, а видит их
+    каждый ученик. Вставленный в разметку без экранирования текст вида
+    <img src=x onerror=…> исполнялся бы в браузере ученика."""
+    exprs = interpolations(SCRIPT)
+    assert len(exprs) > 30, "интерполяции не найдены — разбор сломался?"
+    unescaped = [e for e in exprs if FREE_TEXT.search(e) and not e.startswith("escapeHtml(")]
+    assert not unescaped, f"текст без escapeHtml: {unescaped}"
+
+
 def test_no_inline_code_left_in_template():
     assert "<style" not in TEMPLATE
     assert re.search(r"<script(?![^>]*\bsrc=)[^>]*>", TEMPLATE) is None

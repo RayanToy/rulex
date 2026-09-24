@@ -9,6 +9,13 @@ let selectedWordClass = 5; // Класс слов (на 1 меньше)
 // Сложность и подсчёт верных ответов живут на сервере:
 // браузер больше не знает правильных ответов.
 let questionsData = [];
+// Текст из API и полей ввода вставляется в разметку только через escapeHtml:
+// толкования и дистракторы пишет модель или преподаватель, и без экранирования
+// текст вида <img src=x onerror=…> исполнялся бы в браузере каждого ученика.
+function escapeHtml(value) {
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(value ?? '').replace(/[&<>"']/g, ch => entities[ch]);
+}
 // Функция для получения названия класса
 function getGradeLabel(grade) {
     if (grade === 12) return 'Выпускник';
@@ -129,7 +136,7 @@ function updateHeaderAuth() {
         headerAuth.innerHTML = `
             <div class="user-info">
                 <div>
-                    <span class="user-name">${currentUser.full_name || currentUser.username}</span>
+                    <span class="user-name">${escapeHtml(currentUser.full_name || currentUser.username)}</span>
                     <span class="user-grade">${getGradeLabel(currentUser.grade || 6)}</span>
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="handleLogout()">Выйти</button>
@@ -249,7 +256,7 @@ function showQuestion() {
         div.className = 'option-item';
         div.innerHTML = `
             <div class="option-radio"></div>
-            <span class="option-text">${option}</span>
+            <span class="option-text">${escapeHtml(option)}</span>
         `;
         div.onclick = () => selectOption(index, div, option);
         container.appendChild(div);
@@ -394,8 +401,8 @@ async function generateQuestion() {
             document.getElementById('generate-result').innerHTML = `
                 <div class="generated-result">
                     <h4>✅ Вопрос сгенерирован!</h4>
-                    <div class="result-item"><span class="result-label">Толкование:</span> ${result.question.question}</div>
-                    <div class="result-item"><span class="result-label">Ответ:</span> ${result.question.target_word}</div>
+                    <div class="result-item"><span class="result-label">Толкование:</span> ${escapeHtml(result.question.question)}</div>
+                    <div class="result-item"><span class="result-label">Ответ:</span> ${escapeHtml(result.question.target_word)}</div>
                 </div>
             `;
         } else {
@@ -403,7 +410,7 @@ async function generateQuestion() {
         }
     } catch (e) {
         document.getElementById('generate-result').classList.remove('hidden');
-        document.getElementById('generate-result').innerHTML = `<div class="alert alert-error">Ошибка: ${e.message}</div>`;
+        document.getElementById('generate-result').innerHTML = `<div class="alert alert-error">Ошибка: ${escapeHtml(e.message)}</div>`;
     }
     btn.disabled = false;
     btn.textContent = 'Сгенерировать вопрос';
@@ -428,12 +435,12 @@ async function generateMultiple() {
             });
             if (response.ok) {
                 successCount++;
-                results.push(`✅ ${word}`);
+                results.push(`✅ ${escapeHtml(word)}`);
             } else {
-                results.push(`❌ ${word}`);
+                results.push(`❌ ${escapeHtml(word)}`);
             }
         } catch (e) {
-            results.push(`❌ ${word}`);
+            results.push(`❌ ${escapeHtml(word)}`);
         }
     }
     resultDiv.innerHTML = `
@@ -495,14 +502,14 @@ async function autoGenerate() {
         if (response.ok) {
             resultDiv.innerHTML = `
                 <div class="generated-result">
-                    <h4>✅ ${data.message}</h4>
+                    <h4>✅ ${escapeHtml(data.message)}</h4>
                 </div>
             `;
         } else {
             throw new Error(data.detail || 'Ошибка генерации');
         }
     } catch (e) {
-        resultDiv.innerHTML = `<div class="alert alert-error">❌ Ошибка: ${e.message}</div>`;
+        resultDiv.innerHTML = `<div class="alert alert-error">❌ Ошибка: ${escapeHtml(e.message)}</div>`;
     }
 
     btn.disabled = false;
@@ -549,7 +556,7 @@ async function saveManualQuestion() {
     } catch (e) {
         document.getElementById('manual-result').classList.remove('hidden');
         document.getElementById('manual-result').innerHTML =
-            `<div class="alert alert-error" style="margin-top: 16px;">Ошибка: ${e.message}</div>`;
+            `<div class="alert alert-error" style="margin-top: 16px;">Ошибка: ${escapeHtml(e.message)}</div>`;
     }
 }
 // ============ DATABASE ============
@@ -596,10 +603,10 @@ async function loadQuestions() {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${q.id}</td>
-                <td><span class="badge badge-blue">${q.target_word}</span></td>
+                <td><span class="badge badge-blue">${escapeHtml(q.target_word)}</span></td>
                 <td class="tooltip-container">
-                    <span class="cell-definition">${q.question.substring(0, 30)}...</span>
-                    <div class="tooltip-text">${q.question}</div>
+                    <span class="cell-definition">${escapeHtml(q.question.substring(0, 30))}...</span>
+                    <div class="tooltip-text">${escapeHtml(q.question)}</div>
                 </td>
                 <td>${q.word_class}</td>
                 <td>${freqBadge(q.frequency_type)}</td>
