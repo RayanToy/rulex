@@ -26,7 +26,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.services import generator  # noqa: E402
+from app.services.generation import model_calls, pipeline, realness  # noqa: E402
 from app.services.llm import OllamaError  # noqa: E402
 
 GOLDEN = ROOT / "tests" / "golden" / "generation.json"
@@ -120,12 +120,10 @@ class FakeWordManager:
 
 
 def make_generator(mp, model, lists=None):
-    """Генератор с фальшивой моделью и словарями: подмена фабрик, а не полей."""
-    mp.setenv("RULEX_MODEL_GENERATION", "test-model")
-    mp.setattr(generator, "get_client", lambda: model)
-    mp.setattr(generator, "get_word_manager", lambda: FakeWordManager(lists or {}))
-    mp.setattr(generator, "get_verdicts", lambda: {})
-    return generator.QuestionGenerator()
+    """Генератор с фальшивой моделью и словарями."""
+    mp.setattr(realness, "get_verdicts", lambda: {})
+    llm = model_calls.ModelCaller(client=model, model="test-model")
+    return pipeline.QuestionGenerator(llm=llm, word_manager=FakeWordManager(lists or {}))
 
 
 def question_view(question):
@@ -176,28 +174,28 @@ def scenario_question_bad_word(mp):
 def scenario_filter_batches(mp):
     model = ScriptedModel()
     gen = make_generator(mp, model)
-    kept = gen._filter_real_words_batch(["жоут", "стол", "книга", "травие", "река"], batch_size=2)
-    return {"requests": model.requests, "kept": kept, "failures": gen.filter_failures,
+    kept = gen.realness.filter_batch(["жоут", "стол", "книга", "травие", "река"], batch_size=2)
+    return {"requests": model.requests, "kept": kept, "failures": gen.realness.failures,
             "structured_stats": gen.structured_stats}
 
 
 def scenario_filter_api_error(mp):
     model = ScriptedModel(fail=True)
     gen = make_generator(mp, model)
-    kept = gen._filter_real_words_batch(["стол", "книга"])
-    return {"kept": kept, "failures": gen.filter_failures}
+    kept = gen.realness.filter_batch(["стол", "книга"])
+    return {"kept": kept, "failures": gen.realness.failures}
 
 
 def scenario_suitability(mp):
     model = ScriptedModel()
     gen = make_generator(mp, model)
-    verdicts = [gen._check_word_suitability("стол"), gen._check_word_suitability("москва")]
+    verdicts = [gen.suitability.check("стол"), gen.suitability.check("москва")]
     return {"requests": model.requests, "verdicts": verdicts, "generation_log": gen.generation_log}
 
 
 def scenario_suitability_api_error(mp):
     gen = make_generator(mp, ScriptedModel(fail=True))
-    return {"verdict": gen._check_word_suitability("стол"), "generation_log": gen.generation_log}
+    return {"verdict": gen.suitability.check("стол"), "generation_log": gen.generation_log}
 
 
 def scenario_prefilter_interface(mp):
@@ -207,11 +205,11 @@ def scenario_prefilter_interface(mp):
     batch = ["стол", "жоут", "книга"]
     answer = [tool_use("report_real_words", {"real_words": ["**Стол**", "книга", "лишнее"]})]
     return {
-        "params": gen._real_words_params(batch),
-        "confirmed": gen._real_words_from_answer(batch, answer),
-        "heuristics": {w: [gen._is_basic_valid(w), gen._is_artifact(w)]
+        "params": gen.realness.request_params(batch),
+        "confirmed": gen.realness.words_from_answer(batch, answer),
+        "heuristics": {w: [realness.is_basic_valid(w), realness.is_artifact(w)]
                        for w in ["стол", "пкно", "ab", "красивый", "бежать"]},
-        "dictionary": {w: gen._is_dictionary_word(w) for w in ["стол", "восьмибрат"]},
+        "dictionary": {w: gen.realness.is_dictionary_word(w) for w in ["стол", "восьмибрат"]},
     }
 
 

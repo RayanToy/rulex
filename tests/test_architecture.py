@@ -32,7 +32,7 @@ def imported_modules(path: Path) -> set[str]:
 def test_layer_does_not_import_upwards(layer):
     violations = [
         f"{path.relative_to(APP.parent)}: {module}"
-        for path in sorted((APP / layer).glob("*.py"))
+        for path in sorted((APP / layer).rglob("*.py"))
         for module in sorted(imported_modules(path))
         if module.startswith(FORBIDDEN[layer])
     ]

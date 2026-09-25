@@ -223,15 +223,17 @@ def eval_filter(gen, rows: list[dict], use_llm: bool) -> dict:
     words = [r["word"] for r in rows]
     truth = [r["label"] for r in rows]
 
-    # Этап 1 — бесплатные эвристики (_is_basic_valid + _is_artifact)
+    from app.services.generation.realness import is_artifact, is_basic_valid
+
+    # Этап 1 — бесплатные эвристики (is_basic_valid + is_artifact)
     heur_pred, heur_reason = [], {}
     for w in words:
-        ok_basic, why_basic = gen._is_basic_valid(w)
+        ok_basic, why_basic = is_basic_valid(w)
         if not ok_basic:
             heur_pred.append("artifact")
             heur_reason[w] = why_basic
             continue
-        is_art, why_art = gen._is_artifact(w)
+        is_art, why_art = is_artifact(w)
         heur_pred.append("artifact" if is_art else "real")
         if is_art:
             heur_reason[w] = why_art
@@ -250,7 +252,7 @@ def eval_filter(gen, rows: list[dict], use_llm: bool) -> dict:
 
     # Этап 2 — батч-проверка через LLM поверх выживших после эвристик
     survivors = [w for w, p in zip(words, heur_pred, strict=True) if p == "real"]
-    kept = set(gen._filter_real_words_batch(survivors, batch_size=30))
+    kept = set(gen.realness.filter_batch(survivors, batch_size=30))
 
     combined = [
         "artifact" if (p == "artifact" or w not in kept) else "real"
@@ -416,7 +418,7 @@ def main() -> int:
     if args.dry_run:
         os.environ.setdefault("ANTHROPIC_API_KEY", "dry-run-placeholder")
 
-    from app.services.generator import QuestionGenerator
+    from app.services.generation import QuestionGenerator
 
     gen = QuestionGenerator()
     recorder = None if args.dry_run else LLMRecorder(gen.client, use_cache=not args.no_cache)

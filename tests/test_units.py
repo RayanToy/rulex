@@ -168,9 +168,8 @@ class TestDistractorParsing:
 
     @staticmethod
     def parse(response, word):
-        from app.services import generator
-        gen = generator.QuestionGenerator.__new__(generator.QuestionGenerator)
-        return gen._parse_distractors(response, word)
+        from app.services.generation.distractors import parse_distractors
+        return parse_distractors(response, word)
 
     def test_plain_comma_list(self):
         result = self.parse("человек, житель, племя, народ", "кроманьонец")

@@ -15,7 +15,7 @@ from app.api.schemas import QuestionCreate, TestStartRequest, WordInput
 from app.core.database import AsyncSessionLocal
 from app.core.models import Question
 from app.services.assessment import question_options
-from app.services.generator import QuestionGenerator
+from app.services.generation import QuestionGenerator
 from app.services.llm import OllamaError
 from app.services.wordlists import get_word_manager
 

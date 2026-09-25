@@ -1,0 +1,13 @@
+"""Генерация тестовых заданий: этапы пайплайна и их порядок.
+
+    realness      этап 1 — реальное ли слово: эвристики, вердикты, словари, модель
+    suitability   этап 2 — годится ли слово для теста (топонимы, узкие термины)
+    distractors   этап 3 — неверные варианты ответа
+    definitions   этап 4 — толкование и проверка, что по нему не виден ответ
+    pipeline      QuestionGenerator: порядок этапов, генерация на уровне класса
+    model_calls   общий клиент модели: системный промпт, текстовый и структурный вызов
+    morphology    pymorphy3: часть речи, лемма
+"""
+from app.services.generation.pipeline import QuestionGenerator
+
+__all__ = ["QuestionGenerator"]

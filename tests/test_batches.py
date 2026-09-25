@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.services import batches as batch_runner  # noqa: E402
-from app.services import generator, wordlists  # noqa: E402
+from app.services import wordlists  # noqa: E402
+from app.services.generation.realness import RealnessFilter  # noqa: E402
 from app.services.llm import OllamaError  # noqa: E402
 
 
@@ -182,12 +183,11 @@ class TestVerdictStore:
             ("суэссоя", "artifact", "llm:m:sync"),      # мусор, модель уже решила
             ("робототехник", "real", "llm:m:sync"),     # вне словарей, модель уже решила
         ])
-        gen = generator.QuestionGenerator.__new__(generator.QuestionGenerator)
-        gen.word_manager = wordlists.get_word_manager()
+        realness = RealnessFilter(llm=None, word_manager=wordlists.get_word_manager())
 
         def model_must_not_be_called(*_a, **_k):
             raise AssertionError("вердикт сохранён — модель вызывать не нужно")
-        gen._filter_real_words_batch = model_must_not_be_called
+        realness.filter_batch = model_must_not_be_called
 
-        result = gen._confirm_real(["стол", "суэссоя", "робототехник"])
+        result = realness.confirm(["стол", "суэссоя", "робототехник"])
         assert sorted(result) == ["робототехник", "стол"]

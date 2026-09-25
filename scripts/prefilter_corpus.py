@@ -8,7 +8,7 @@
 
 Порядок тот же, что в живом каскаде: эвристики пайплайна, словари
 (pymorphy3 + Шаров), модель — только для оставшегося. Промпт и разбор
-ответа модели — те же методы генератора, что в живом пути.
+ответа модели — те же, что в живом пути: этап RealnessFilter.
 
 Модель вызывается через Batches API, если он доступен (вдвое дешевле и без
 лимитов на одновременность), иначе — по одному запросу. Шлюз router.cheap
@@ -32,8 +32,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.services import generator, wordlists  # noqa: E402
+from app.services import wordlists  # noqa: E402
 from app.services.batches import run_requests  # noqa: E402
+from app.services.generation.console import log  # noqa: E402
+from app.services.generation.model_calls import ModelCaller  # noqa: E402
+from app.services.generation.realness import RealnessFilter, is_artifact, is_basic_valid  # noqa: E402
 
 CHUNK = 30  # столько же слов, сколько в живом батч-фильтре
 
@@ -49,26 +52,26 @@ def main() -> int:
     parser.add_argument("--poll-seconds", type=float, default=30.0)
     args = parser.parse_args()
 
-    gen = generator.QuestionGenerator()
+    llm = ModelCaller()
+    realness = RealnessFilter(llm, wordlists.get_word_manager())
     verdicts = wordlists.get_verdicts()
-    log = generator._log
 
     # Кандидаты — как в _prepare_candidates: базовая проверка и эвристики
     words: list[str] = []
     seen: set[str] = set()
     for cls in args.classes:
-        for w in sorted(gen.word_manager.get_words_for_class(cls)):
+        for w in sorted(realness.word_manager.get_words_for_class(cls)):
             if w in seen:
                 continue
             seen.add(w)
-            if gen._is_basic_valid(w)[0] and not gen._is_artifact(w)[0]:
+            if is_basic_valid(w)[0] and not is_artifact(w)[0]:
                 words.append(w)
 
     pending_dict, pending_llm, already = [], [], 0
     for w in words:
         if w in verdicts:
             already += 1
-        elif gen._is_dictionary_word(w):
+        elif realness.is_dictionary_word(w):
             pending_dict.append(w)
         else:
             pending_llm.append(w)
@@ -88,11 +91,11 @@ def main() -> int:
         f"chunk-{n:05d}": pending_llm[i:i + CHUNK]
         for n, i in enumerate(range(0, len(pending_llm), CHUNK))
     }
-    requests = {cid: gen._real_words_params(chunk) for cid, chunk in chunks.items()}
-    log(f"[INFO] модель {gen.model}: {len(pending_llm)} слов, {len(requests)} запросов")
+    requests = {cid: realness.request_params(chunk) for cid, chunk in chunks.items()}
+    log(f"[INFO] модель {llm.model}: {len(pending_llm)} слов, {len(requests)} запросов")
 
     started = time.perf_counter()
-    results, mode = run_requests(gen.client, requests, prefer_batches=not args.no_batches,
+    results, mode = run_requests(llm.client, requests, prefer_batches=not args.no_batches,
                                  progress=lambda m: log(f"[INFO] {m}"),
                                  poll_seconds=args.poll_seconds)
     elapsed = time.perf_counter() - started
@@ -103,8 +106,8 @@ def main() -> int:
         if content is None:
             skipped += len(chunk)  # не выполнен — вердикт не пишем, уйдёт в следующий запуск
             continue
-        real = set(gen._real_words_from_answer(chunk, content))
-        source = f"llm:{gen.model}:{mode}"
+        real = set(realness.words_from_answer(chunk, content))
+        source = f"llm:{llm.model}:{mode}"
         rows += [(w, "real" if w in real else "artifact", source) for w in chunk]
     wordlists.append_verdicts(rows)
 
@@ -113,7 +116,7 @@ def main() -> int:
     log(f"[INFO] записано вердиктов модели: {len(rows)} (реальных {n_real}, мусора {len(rows) - n_real})")
     if skipped:
         log(f"[WARN] без вердикта осталось {skipped} слов — запросы не выполнились")
-    s = gen.structured_stats
+    s = llm.structured_stats
     log(f"[INFO] структурных ответов: {s['tool']}, разобрано из текста: {s['fallback']}")
     return 0
 

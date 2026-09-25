@@ -22,7 +22,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from app.services import generator  # noqa: E402
+from app.services.generation.model_calls import ModelCaller  # noqa: E402
+from app.services.generation.realness import RealnessFilter  # noqa: E402
+from app.services.wordlists import get_word_manager  # noqa: E402
 
 WORDS_FILE = ROOT / "eval" / "filter_agreement_words.tsv"
 RESULTS = ROOT / "eval" / "results"
@@ -45,14 +47,15 @@ def main() -> int:
     words = load_words()
     out = io.StringIO()
 
-    gen = generator.QuestionGenerator()
-    print(f"модель: {gen.model}   слов: {len(words)}", file=out)
+    llm = ModelCaller()
+    realness = RealnessFilter(llm, get_word_manager())
+    print(f"модель: {llm.model}   слов: {len(words)}", file=out)
 
-    kept = set(gen._filter_real_words_batch([w for w, _ in words], batch_size=30))
-    if gen.filter_failures:
+    kept = set(realness.filter_batch([w for w, _ in words], batch_size=30))
+    if realness.failures:
         # Слова из упавшего батча выглядят как «LLM отверг» — такие цифры
         # нельзя писать поверх настоящих результатов
-        print(f"[ERROR] {len(gen.filter_failures)} батчей не выполнено из-за сбоя API, "
+        print(f"[ERROR] {len(realness.failures)} батчей не выполнено из-за сбоя API, "
               f"результаты не записаны", file=sys.stderr)
         return 1
 
