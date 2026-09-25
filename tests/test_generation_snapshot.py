@@ -37,6 +37,11 @@ NOUN_DISTRACTORS = ["племя", "народ", "житель", "предок", 
 VERB_DISTRACTORS = ["бежать", "идти", "прыгать", "ползти", "лететь"]
 DEFAULT_DEFINITION = "Понятие, знакомое каждому школьнику"
 
+# Частота по словарю Шарова, ipm; остальных слов в словаре «нет»
+SHAROV = {"книга": 250.0, "город": 300.0, "окно": 120.0, "школа": 200.0, "читать": 150.0,
+          "река": 80.0, "гора": 70.0, "берег": 40.0, "мороз": 30.0, "сад": 50.0,
+          "лампа": 20.0, "бежать": 60.0}
+
 CLASS_WORDS = [
     # реальные слова, которые подтверждают словари
     "книга", "река", "город", "лампа", "мороз", "берег", "окно", "школа",
@@ -57,13 +62,22 @@ def text(value):
 
 
 class ScriptedModel:
-    """Фальшивая модель: отвечает по правилам и записывает запросы."""
+    """Фальшивая модель: отвечает по правилам и записывает запросы.
 
-    def __init__(self, definitions=(), fail=False):
+    Решатель (этап однозначности) видит только толкование и варианты,
+    поэтому «правильный ответ» модель берёт из предыдущего запроса о том
+    же слове. ambiguous — дистракторы, которые решатель тоже сочтёт
+    подходящими; solver_misses — решатель не узнаёт загаданное слово.
+    """
+
+    def __init__(self, definitions=(), fail=False, ambiguous=(), solver_misses=False):
         self.requests = []
         self.messages = self
         self._definitions = list(definitions)
         self._fail = fail
+        self._ambiguous = set(ambiguous)
+        self._solver_misses = solver_misses
+        self._last_word = None
 
     def create(self, **params):
         self.requests.append(params)
@@ -74,6 +88,13 @@ class ScriptedModel:
     def _answer(self, params):
         prompt = params["messages"][0]["content"]
         tool = (params.get("tools") or [{}])[0].get("name")
+        if tool == "report_matching_options":
+            options = listed_options(prompt)
+            chosen = [o for o in options if o != self._last_word] if self._solver_misses else [self._last_word]
+            matching = chosen[:1] + [o for o in options if o in self._ambiguous]
+            return [tool_use(tool, {"matching": matching, "reason": "по толкованию"})]
+        if re.search(r'слов[а-я]* "', prompt):
+            self._last_word = quoted_word(prompt)
         if tool == "report_real_words":
             listed = listed_words(prompt)
             return [tool_use(tool, {"real_words": [w for w in listed if w not in FAKE_WORDS]})]
@@ -93,7 +114,11 @@ def listed_words(prompt):
 
 
 def quoted_word(prompt):
-    return re.search(r'слово "([^"]+)"', prompt).group(1)
+    return re.search(r'слов[а-я]* "([^"]+)"', prompt).group(1)
+
+
+def listed_options(prompt):
+    return prompt.split("Варианты ответа: ", 1)[1].split("\n", 1)[0].split(", ")
 
 
 def request_summary(params):
@@ -102,6 +127,8 @@ def request_summary(params):
     tool = (params.get("tools") or [{}])[0].get("name")
     if tool == "report_real_words":
         return f"{tool}: {', '.join(listed_words(prompt))}"
+    if tool == "report_matching_options":
+        return f"{tool}: {', '.join(listed_options(prompt))}"
     if tool:
         return f"{tool}: {quoted_word(prompt)}"
     kind = "correction" if prompt.startswith("Исправь толкование") else "definition"
@@ -116,7 +143,7 @@ class FakeWordManager:
         return list(self.relative_lists.get(word_class, []))
 
     def get_sharov_frequency(self, word):
-        return 0
+        return SHAROV.get(word, 0)
 
 
 def make_generator(mp, model, lists=None):
@@ -152,6 +179,35 @@ def scenario_question_with_correction(mp):
     gen = make_generator(mp, model)
     result = gen.generate_question("лес", 5, "medium")
     return {"requests": model.requests, "result": question_view(result)}
+
+
+def scenario_question_ambiguous_distractor_dropped(mp):
+    """Решатель счёл «народ» подходящим под толкование — вариант убирается."""
+    model = ScriptedModel(definitions=["Древний человек, живший в эпоху палеолита"],
+                          ambiguous={"народ"})
+    gen = make_generator(mp, model)
+    result = gen.generate_question("кроманьонец", 6, "low")
+    return {"requests": [request_summary(p) for p in model.requests], "result": question_view(result)}
+
+
+def scenario_question_ambiguous_rejected(mp):
+    """Подходят два дистрактора из трёх — задание отбраковывается."""
+    model = ScriptedModel(definitions=["Древний человек, живший в эпоху палеолита"],
+                          ambiguous={"народ", "племя"})
+    gen = make_generator(mp, model)
+    with pytest.raises(ValueError) as exc:
+        gen.generate_question("кроманьонец")
+    return {"error": error_view(exc.value), "generation_log": gen.generation_log}
+
+
+def scenario_question_solver_misses(mp):
+    """Решатель не узнал загаданное слово — толкование на него не указывает."""
+    model = ScriptedModel(definitions=["Древний человек, живший в эпоху палеолита"],
+                          solver_misses=True)
+    gen = make_generator(mp, model)
+    with pytest.raises(ValueError) as exc:
+        gen.generate_question("кроманьонец")
+    return {"error": error_view(exc.value)}
 
 
 def scenario_question_leak_rejected(mp):

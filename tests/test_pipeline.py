@@ -52,3 +52,29 @@ def test_stage_trace_lands_in_generator_log():
                                      word_manager=SimpleNamespace(relative_lists={}))
     gen.suitability._trace("word_check", {"word": "стол"})
     assert gen.generation_log == [{"step": "word_check", "word": "стол"}]
+
+
+class TestFrequencyBands:
+    """Частотность — по словарю, а не по позиции в перемешанном списке."""
+
+    @staticmethod
+    def bands(freqs):
+        from app.services.generation.frequency import frequency_bands
+        return frequency_bands(list(freqs), SimpleNamespace(get_sharov_frequency=freqs.get))
+
+    def test_absent_from_dictionary_is_low(self):
+        assert self.bands({"стол": 100.0, "свояченица": 0.0})["свояченица"] == "low"
+
+    def test_known_words_split_by_median(self):
+        result = self.bands({"a": 1.0, "b": 2.0, "c": 3.0, "d": 4.0})
+        assert [result[w] for w in "abcd"] == ["medium", "medium", "high", "high"]
+
+    def test_label_follows_the_word_not_its_position(self):
+        freqs = {"свояченица": 0.0, "книга": 250.0, "лампа": 20.0}
+        forward = self.bands(freqs)
+        backward = self.bands(dict(reversed(list(freqs.items()))))
+        assert forward == backward
+        assert forward["свояченица"] == "low" and forward["книга"] == "high"
+
+    def test_nothing_known_means_all_low(self):
+        assert set(self.bands({"а": 0.0, "б": 0.0}).values()) == {"low"}

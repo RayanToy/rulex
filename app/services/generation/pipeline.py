@@ -11,9 +11,11 @@ import random
 
 from anthropic import APIConnectionError, APIError, APIStatusError
 
+from app.services.generation.answerability import AnswerabilityCheck
 from app.services.generation.console import log
 from app.services.generation.definitions import DefinitionWriter
 from app.services.generation.distractors import DistractorPicker
+from app.services.generation.frequency import frequency_bands
 from app.services.generation.model_calls import ModelCaller
 from app.services.generation.morphology import get_pos
 from app.services.generation.realness import RealnessFilter, is_artifact, is_basic_valid
@@ -37,6 +39,7 @@ class QuestionGenerator:
         self.suitability = SuitabilityCheck(self.llm, trace=self._trace)
         self.distractors = DistractorPicker(self.llm, trace=self._trace)
         self.definitions = DefinitionWriter(self.llm, trace=self._trace)
+        self.answerability = AnswerabilityCheck(self.llm, trace=self._trace)
 
     @property
     def client(self):
@@ -74,6 +77,9 @@ class QuestionGenerator:
         # Получение толкования
         definition = self.definitions.write(word, distractors)
 
+        # Однозначность: модель решает задание, не зная ответа
+        distractors = self.answerability.filter_distractors(word, definition, distractors)
+
         # Форматирование
         if definition and definition[0].islower():
             definition = definition[0].upper() + definition[1:]
@@ -95,8 +101,8 @@ class QuestionGenerator:
         self._trace("complete", {"success": True})
         return result
 
-    def _prepare_candidates(self, word_class: int, count: int) -> tuple[list[str], list[str]]:
-        """Шаги 1–4: эвристики, батч-проверка реальности, распределение частотности.
+    def _prepare_candidates(self, word_class: int, count: int) -> tuple[list[str], dict[str, str]]:
+        """Шаги 1–4: эвристики, батч-проверка реальности, частотность кандидатов.
 
         Вынесено отдельно, чтобы синхронная и асинхронная генерация
         использовали ровно одну и ту же подготовку.
@@ -154,16 +160,11 @@ class QuestionGenerator:
         if len(real_words) < 5:
             raise ValueError(f"Критически мало реальных слов: {len(real_words)}")
 
-        # ── Шаг 4: распределение частотности ─────────────────────────────
-        freq_distribution = (
-            ["high"] * int(count * 0.4) +
-            ["medium"] * int(count * 0.4) +
-            ["low"] * int(count * 0.2)
-        )
-        random.shuffle(freq_distribution)
+        # ── Шаг 4: частотность по словарю — у каждого слова своя ─────────
+        bands = frequency_bands(real_words, self.word_manager)
 
         candidates = real_words[:min(len(real_words), count * 8)]
-        return candidates, freq_distribution
+        return candidates, bands
 
     def generate_questions_for_class(self, word_class: int, count: int = 20) -> list[dict]:
         """
@@ -175,7 +176,7 @@ class QuestionGenerator:
         3. Увеличенный пул кандидатов
         """
 
-        candidates, freq_distribution = self._prepare_candidates(word_class, count)
+        candidates, bands = self._prepare_candidates(word_class, count)
 
         questions = []
 
@@ -190,12 +191,7 @@ class QuestionGenerator:
                 continue
 
             try:
-                freq_type = (
-                    freq_distribution[len(questions)]
-                    if len(questions) < len(freq_distribution)
-                    else "medium"
-                )
-                question = self.generate_question(word, word_class, freq_type)
+                question = self.generate_question(word, word_class, bands[word])
                 questions.append(question)
                 log(f"[OK] {len(questions)}/{count}: {word}")
             except Exception as e:
@@ -262,7 +258,7 @@ class QuestionGenerator:
         """
         if concurrency is None:
             concurrency = max(1, int(os.getenv("RULEX_GEN_CONCURRENCY") or 1))
-        candidates, freq_distribution = await asyncio.to_thread(
+        candidates, bands = await asyncio.to_thread(
             self._prepare_candidates, word_class, count
         )
 
@@ -276,11 +272,7 @@ class QuestionGenerator:
         pending = list(candidates)
         while pending and len(questions) < count:
             wave, pending = pending[:count - len(questions)], pending[count - len(questions):]
-            tasks = [
-                one(word, freq_distribution[(len(questions) + i) % len(freq_distribution)]
-                    if freq_distribution else "medium")
-                for i, word in enumerate(wave)
-            ]
+            tasks = [one(word, bands[word]) for word in wave]
             for result in await asyncio.gather(*tasks):
                 if result is not None and len(questions) < count:
                     questions.append(result)
