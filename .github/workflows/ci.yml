@@ -50,7 +50,8 @@ jobs:
         run: python3 scripts/smoke_deploy.py http://localhost:8000 --register
 
       - name: Приложение работает не от root
-        run: test "$(docker top rulex -o uid | tail -n +2 | sort -u)" = "1000"
+        # docker top требует поле pid среди выводимых
+        run: test "$(docker top rulex -o pid,uid | tail -n +2 | awk '{print $2}' | sort -u)" = "1000"
 
       - name: Перезапуск — данные на месте, банк не задублирован
         run: |
