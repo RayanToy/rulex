@@ -164,3 +164,14 @@ class TestSummary:
     def test_empty_test(self):
         s = assessment.summarize([], grade=6)
         assert (s["score"], s["total"], s["percentage"], s["level"]) == (0, 0, 0, "low")
+
+
+class TestRecommendation:
+    def test_graduate_is_not_sent_to_13th_grade(self):
+        graded = graded_seq("+" * 14, "high") + graded_seq("+" * 6, "low")
+        text = assessment.summarize(graded, grade=12)["recommendation"]
+        assert "13" not in text and "12 класса" not in text
+
+    def test_low_level_names_pupils_own_grade(self):
+        text = assessment.summarize(graded_seq("+--", "medium"), grade=6)["recommendation"]
+        assert "6 класса" in text

@@ -6,6 +6,12 @@ let selectedAnswer = null;
 let testAnswers = [];
 let selectedGrade = 6; // Класс ученика
 let selectedWordClass = 5; // Класс слов (на 1 меньше)
+// Тест без регистрации: результат проверяется на сервере и не сохраняется
+let guestMode = false;
+// Попытка, выданная сервером при старте теста: ответы принимаются только к ней
+let currentAttemptId = null;
+// Сколько вопросов в банке по классам слов: {word_class: {questions, ready}}
+let gradeInfo = {};
 // Сложность и подсчёт верных ответов живут на сервере:
 // браузер больше не знает правильных ответов.
 let questionsData = [];
@@ -31,9 +37,63 @@ function generateGradeButtons() {
         const label = g === 12 ? 'Вып.' : g;
         const sublabel = g === 12 ? '' : 'класс';
         const selected = g === selectedGrade ? 'selected' : '';
-        html += `<button class="grade-btn ${selected}" onclick="selectGrade(${g}, this)">${label}<span>${sublabel}</span></button>`;
+        const unavailable = isGradeReady(g) ? '' : 'unavailable';
+        const hint = isGradeReady(g) ? '' : 'Вопросы для этого класса ещё не подготовлены';
+        html += `<button class="grade-btn ${selected} ${unavailable}" title="${hint}" onclick="selectGrade(${g}, this)">${label}<span>${sublabel}</span></button>`;
     }
     container.innerHTML = html;
+}
+// Классы ученика на единицу больше классов списков слов
+function isGradeReady(grade) {
+    const info = gradeInfo[grade - 1];
+    return Boolean(info && info.ready);
+}
+// Готовность банка по классам. Раньше страница считала вопросы через
+// /api/questions, а он доступен только преподавателю: у ученика запрос
+// падал с 403, и счётчик молча не обновлялся.
+async function loadGrades() {
+    try {
+        const response = await fetch('/api/public/grades');
+        const grades = await response.json();
+        gradeInfo = Object.fromEntries(grades.map(g => [g.word_class, g]));
+    } catch (e) {
+        gradeInfo = {};
+    }
+    if (!isGradeReady(selectedGrade)) {
+        const first = Object.values(gradeInfo).find(g => g.ready);
+        if (first) {
+            selectedGrade = first.word_class + 1;
+            selectedWordClass = first.word_class;
+        }
+    }
+    generateGradeButtons();
+    loadTestStats();
+}
+// Вкладки и кнопки по ролям: гостю — только тест, ученику — ещё история,
+// преподавателю — генерация и банк вопросов
+function applyRoleVisibility() {
+    const isUser = Boolean(currentUser);
+    const isAdmin = Boolean(currentUser && currentUser.is_admin);
+    document.querySelectorAll('.user-only').forEach(el => el.classList.toggle('hidden', !isUser));
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !isAdmin));
+    document.querySelectorAll('.guest-only').forEach(el => el.classList.toggle('hidden', !guestMode));
+}
+function startGuest() {
+    guestMode = true;
+    currentUser = null;
+    showApp();
+    showPage('test', document.querySelectorAll('.nav-tab')[1]);
+}
+function exitGuest(register) {
+    guestMode = false;
+    document.getElementById('auth-container').classList.remove('hidden');
+    document.getElementById('app-container').classList.add('hidden');
+    updateHeaderAuth();
+    if (register) {
+        showRegister();
+    } else {
+        showLogin();
+    }
 }
 // ============ AUTH ============
 function showLogin() {
@@ -63,6 +123,7 @@ async function handleLogin() {
         const data = await response.json();
 
         if (response.ok) {
+            guestMode = false;
             currentUser = data.user;
             showApp();
         } else {
@@ -94,6 +155,7 @@ async function handleRegister() {
         const data = await response.json();
 
         if (response.ok) {
+            guestMode = false;
             currentUser = data.user;
             showApp();
         } else {
@@ -109,6 +171,7 @@ async function handleLogout() {
     } catch (e) {}
 
     currentUser = null;
+    guestMode = false;
     document.getElementById('auth-container').classList.remove('hidden');
     document.getElementById('app-container').classList.add('hidden');
     updateHeaderAuth();
@@ -126,7 +189,8 @@ function showApp() {
     document.getElementById('auth-container').classList.add('hidden');
     document.getElementById('app-container').classList.remove('hidden');
     updateHeaderAuth();
-    selectedGrade = currentUser.grade || 6;
+    applyRoleVisibility();
+    selectedGrade = (currentUser && currentUser.grade) || 6;
     selectedWordClass = selectedGrade - 1;
     generateGradeButtons();
 }
@@ -140,6 +204,13 @@ function updateHeaderAuth() {
                     <span class="user-grade">${getGradeLabel(currentUser.grade || 6)}</span>
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="handleLogout()">Выйти</button>
+            </div>
+        `;
+    } else if (guestMode) {
+        headerAuth.innerHTML = `
+            <div class="user-info">
+                <div><span class="user-name">Гость</span></div>
+                <button class="btn btn-outline btn-sm" onclick="exitGuest()">Войти</button>
             </div>
         `;
     } else {
@@ -160,42 +231,36 @@ function showPage(pageName, tab) {
     document.getElementById('page-' + pageName).classList.add('active');
     if (tab) tab.classList.add('active');
     if (pageName === 'database') loadQuestions();
-    if (pageName === 'test') { generateGradeButtons(); loadTestStats(); }
+    if (pageName === 'test') loadGrades();
     if (pageName === 'history') loadHistory();
 }
 // ============ ADAPTIVE TEST ============
 function selectGrade(grade, btn) {
+    if (!isGradeReady(grade)) return;
     selectedGrade = grade;
     selectedWordClass = grade - 1; // Класс слов на 1 меньше
     document.querySelectorAll('.grade-btn').forEach(b => b.classList.remove('selected'));
     btn.classList.add('selected');
     loadTestStats();
 }
-async function loadTestStats() {
-    try {
-        const response = await fetch('/api/questions');
-        const questions = await response.json();
-        // Фильтруем по классу слов (word_class)
-        const gradeQuestions = questions.filter(q => q.word_class === selectedWordClass);
-        document.getElementById('available-questions').textContent = gradeQuestions.length;
+function loadTestStats() {
+    const info = gradeInfo[selectedWordClass];
+    const ready = Boolean(info && info.ready);
+    document.getElementById('available-questions').textContent = info ? info.questions : 0;
 
-        const btn = document.getElementById('btn-start-test');
-        const autoGenBtn = document.getElementById('btn-auto-gen-test');
+    const btn = document.getElementById('btn-start-test');
+    btn.disabled = !ready;
+    btn.textContent = ready ? 'Начать тест' : 'Недостаточно вопросов (мин. 5)';
 
-        if (gradeQuestions.length < 5) {
-            btn.disabled = true;
-            btn.textContent = 'Недостаточно вопросов (мин. 5)';
-            if (autoGenBtn) autoGenBtn.classList.remove('hidden');
-        } else {
-            btn.disabled = false;
-            btn.textContent = 'Начать тест';
-            if (autoGenBtn) autoGenBtn.classList.add('hidden');
-        }
-    } catch (e) {}
+    // Сгенерировать недостающие вопросы может только преподаватель
+    const autoGenBtn = document.getElementById('btn-auto-gen-test');
+    const canGenerate = !ready && Boolean(currentUser && currentUser.is_admin);
+    if (autoGenBtn) autoGenBtn.classList.toggle('hidden', !canGenerate);
 }
 async function startAdaptiveTest() {
     try {
-        const response = await fetch('/api/test/start', {
+        const url = guestMode ? '/api/public/test/auto-start' : '/api/test/start';
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ grade: selectedWordClass }) // Передаём класс слов
@@ -208,6 +273,7 @@ async function startAdaptiveTest() {
             return;
         }
         testQuestions = data.questions;
+        currentAttemptId = data.attempt_id;
         currentQuestion = 0;
         selectedAnswer = null;
         testAnswers = [];
@@ -295,16 +361,19 @@ function nextQuestion() {
 }
 async function completeTest() {
     try {
-        const response = await fetch('/api/test/complete', {
+        const url = guestMode ? '/api/public/test/complete' : '/api/test/complete';
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                answers: testAnswers,
-                grade: selectedWordClass
-            })
+            body: JSON.stringify({ attempt_id: currentAttemptId, answers: testAnswers })
         });
 
         const result = await response.json();
+        if (!response.ok) {
+            alert(result.detail || 'Не удалось проверить тест');
+            return;
+        }
+        applyRoleVisibility();
 
         document.getElementById('test-question').classList.add('hidden');
         document.getElementById('test-result').classList.remove('hidden');
@@ -317,7 +386,8 @@ async function completeTest() {
         levelText.className = 'result-level ' + result.level;
 
         document.getElementById('result-grade-text').textContent =
-            `Тестирование для ${getGradeLabel(selectedGrade)}`;
+            selectedGrade === 12 ? 'Тестирование для выпускников'
+                                 : `Тестирование для ${selectedGrade} класса`;
 
         document.getElementById('score-value').textContent =
             `${result.score}/${result.total}`;
@@ -340,8 +410,7 @@ async function completeTest() {
 function restartTest() {
     document.getElementById('test-result').classList.add('hidden');
     document.getElementById('test-setup').classList.remove('hidden');
-    generateGradeButtons();
-    loadTestStats();
+    loadGrades();
 }
 // ============ HISTORY ============
 async function loadHistory() {
@@ -468,7 +537,7 @@ async function autoGenerateForTest() {
 
         if (response.ok) {
             alert('✅ ' + data.message);
-            loadTestStats();
+            loadGrades();
         } else {
             throw new Error(data.detail || 'Ошибка генерации');
         }

@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
@@ -31,6 +32,11 @@ def _cfg(url: str) -> Config:
     return cfg
 
 
+def _head() -> str:
+    """Последняя ревизия — из самих миграций, а не константой в тесте."""
+    return ScriptDirectory.from_config(_cfg("sqlite://")).get_current_head()
+
+
 def _fks(conn, table):
     """(колонка, таблица-цель, ON DELETE) для каждого внешнего ключа."""
     return {(r[3], r[2], r[6]) for r in conn.execute(text(f"PRAGMA foreign_key_list({table})"))}
@@ -42,11 +48,12 @@ class TestMigrations:
         database.migrate(url)
         eng = create_engine(url)
         with eng.connect() as conn:
-            assert "sessions" in inspect(conn).get_table_names()
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+            assert {"sessions", "test_attempts"} <= set(inspect(conn).get_table_names())
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == _head()
             assert ("question_id", "questions", "SET NULL") in _fks(conn, "test_answers")
             assert ("test_result_id", "test_results", "CASCADE") in _fks(conn, "test_answers")
             assert ("user_id", "users", "CASCADE") in _fks(conn, "sessions")
+            assert ("user_id", "users", "CASCADE") in _fks(conn, "test_attempts")
         eng.dispose()
 
     def test_legacy_database_is_upgraded_without_data_loss(self, tmp_path):
@@ -70,7 +77,7 @@ class TestMigrations:
         database.migrate(url)
 
         with eng.connect() as conn:
-            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == _head()
             assert conn.execute(text("SELECT username FROM users")).scalar() == "teacher"
             answer = conn.execute(text("SELECT question_id, user_answer FROM test_answers")).one()
             # висячая ссылка обнулена, а история ответа сохранена

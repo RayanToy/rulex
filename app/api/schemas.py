@@ -48,5 +48,8 @@ class SubmittedAnswer(BaseModel):
 
 
 class TestCompleteRequest(BaseModel):
+    # Идентификатор попытки из ответа на старт теста. Класс берётся из
+    # попытки, а не из запроса: клиенту не доверяется ничего, кроме
+    # выбранных вариантов.
+    attempt_id: str
     answers: list[SubmittedAnswer]
-    grade: int

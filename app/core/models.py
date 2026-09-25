@@ -162,3 +162,24 @@ class Session(Base):
                      nullable=False, index=True)
     created_at = Column(DateTime, nullable=False, default=utcnow)
     expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class TestAttempt(Base):
+    """Выданный тест: какие вопросы получил ученик или гость.
+
+    Ответы принимаются только на эти вопросы и только один раз. Без этого
+    /api/test/complete принимал ответы на любые существующие вопросы:
+    можно было сдать «тест» из одних знакомых вопросов, пропустить
+    трудные или по одному вопросу выяснять, какой вариант верный.
+    Хранится SHA-256 идентификатора попытки, как и у сессий.
+    """
+    __tablename__ = "test_attempts"
+
+    token_hash = Column(String(64), primary_key=True)
+    # None — гость: тест без регистрации, результат не сохраняется
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=True, index=True)
+    word_class = Column(Integer, nullable=False)
+    question_ids = Column(Text, nullable=False)  # JSON-список id в порядке выдачи
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)

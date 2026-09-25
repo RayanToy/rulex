@@ -114,14 +114,20 @@ def calculate_level(percentage: float, high_freq_pct: float, low_freq_pct: float
     return "low"
 
 
+def _class_name(grade: int) -> str:
+    return "выпускного класса" if grade >= 12 else f"{grade} класса"
+
+
 def get_recommendation(level: str, grade: int, percentage: float) -> str:
+    """Текст рекомендации. grade — класс ученика (12 — выпускник)."""
     if level == "high":
-        return (f"Отлично! Вы показали высокий уровень владения лексикой ({percentage:.0f}%). "
-                f"Рекомендуем перейти к изучению слов {grade + 1} класса.")
+        advice = ("Вы владеете лексикой выпускного класса." if grade >= 12
+                  else f"Рекомендуем перейти к изучению слов {_class_name(grade + 1)}.")
+        return f"Отлично! Вы показали высокий уровень владения лексикой ({percentage:.0f}%). {advice}"
     if level == "medium":
-        return (f"Хороший результат ({percentage:.0f}%). Вы знаете большинство слов {grade} класса. "
+        return (f"Хороший результат ({percentage:.0f}%). Вы знаете большинство слов {_class_name(grade)}. "
                 f"Рекомендуем уделить внимание редким словам.")
-    return f"Результат: {percentage:.0f}%. Рекомендуем повторить основные слова {grade} класса."
+    return f"Результат: {percentage:.0f}%. Рекомендуем повторить основные слова {_class_name(grade)}."
 
 
 def max_difficulty_reached(graded: list[dict], start: int = 5) -> int:

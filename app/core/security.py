@@ -61,7 +61,7 @@ def needs_rehash(hashed_password: str) -> bool:
         return True
 
 
-def _hash_token(token: str) -> str:
+def hash_token(token: str) -> str:
     """Токен в базе не хранится — только его SHA-256.
 
     Медленный хеш вроде Argon2 здесь не нужен: токен случайный,
@@ -84,7 +84,7 @@ async def create_session(user_id: int) -> str:
         # Попутно убираем истёкшие сессии этого пользователя, чтобы таблица не росла
         await db.execute(delete(Session).where(Session.user_id == user_id,
                                                Session.expires_at < now))
-        db.add(Session(token_hash=_hash_token(token), user_id=user_id,
+        db.add(Session(token_hash=hash_token(token), user_id=user_id,
                        created_at=now, expires_at=now + SESSION_TTL))
         await db.commit()
     return token
@@ -96,7 +96,7 @@ async def get_user_id_from_token(token: str | None) -> int | None:
         return None
     async with AsyncSessionLocal() as db:
         record = (await db.execute(
-            select(Session).where(Session.token_hash == _hash_token(token))
+            select(Session).where(Session.token_hash == hash_token(token))
         )).scalar_one_or_none()
         if record is None:
             return None
@@ -110,5 +110,5 @@ async def get_user_id_from_token(token: str | None) -> int | None:
 async def delete_session(token: str) -> None:
     """Выход: сессия удаляется из базы, токен перестаёт работать сразу."""
     async with AsyncSessionLocal() as db:
-        await db.execute(delete(Session).where(Session.token_hash == _hash_token(token)))
+        await db.execute(delete(Session).where(Session.token_hash == hash_token(token)))
         await db.commit()

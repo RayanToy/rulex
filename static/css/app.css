@@ -736,6 +736,24 @@ body {
     margin-top: 4px;
 }
 .hidden { display: none !important; }
+.guest-cta {
+    margin-top: 28px;
+    text-align: center;
+}
+.guest-note {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #64748b;
+    text-align: center;
+}
+.grade-btn.unavailable {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.grade-btn.unavailable:hover {
+    border-color: #e2e8f0;
+    color: #64748b;
+}
 .empty-state {
     text-align: center;
     padding: 60px 20px;

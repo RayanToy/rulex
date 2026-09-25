@@ -30,6 +30,10 @@
                 <p>Платформа «RuLex: платформа роста вербального интеллекта» предлагает индивидуализированные тесты, адаптированные к уровню каждого ученика, что помогает эффективнее определить и развивать ваш вербальный интеллект.</p>
                 <p class="grant-text">Работа выполнена при поддержке гранта Фонда содействия инновациям, предоставленного в рамках программы «Студенческий стартап» федерального проекта «Платформа университетского технологического предпринимательства».</p>
             </div>
+            <div class="guest-cta">
+                <button class="btn btn-primary" onclick="startGuest()">Пройти тест без регистрации</button>
+                <p class="guest-note">20 заданий, около 10 минут. Ответы проверяются на сервере, результат не сохраняется — чтобы видеть историю, войдите или зарегистрируйтесь.</p>
+            </div>
         </div>
         <div id="login-form" class="auth-card" style="max-width: 420px; margin: 0 auto;">
             <h1 class="auth-title">Вход в систему</h1>
@@ -108,9 +112,9 @@
         <div class="nav-tabs">
             <button class="nav-tab active" onclick="showPage('home', this)">Главная</button>
             <button class="nav-tab" onclick="showPage('test', this)">Пройти тест</button>
-            <button class="nav-tab" onclick="showPage('history', this)">История</button>
-            <button class="nav-tab" onclick="showPage('generate', this)">Генерация вопросов</button>
-            <button class="nav-tab" onclick="showPage('database', this)">База вопросов</button>
+            <button class="nav-tab user-only" onclick="showPage('history', this)">История</button>
+            <button class="nav-tab admin-only" onclick="showPage('generate', this)">Генерация вопросов</button>
+            <button class="nav-tab admin-only" onclick="showPage('database', this)">База вопросов</button>
         </div>
         <!-- Home Page -->
         <div class="page active" id="page-home">
@@ -129,7 +133,7 @@
                         <button class="btn btn-primary" onclick="showPage('test', document.querySelectorAll('.nav-tab')[1])">
                             Начать тестирование
                         </button>
-                        <button class="btn btn-secondary" onclick="showPage('history', document.querySelectorAll('.nav-tab')[2])">
+                        <button class="btn btn-secondary user-only" onclick="showPage('history', document.querySelectorAll('.nav-tab')[2])">
                             История тестов
                         </button>
                     </div>
@@ -237,6 +241,9 @@
                     <div class="recommendation-title">📌 Рекомендация</div>
                     <div class="recommendation-text" id="recommendation-text"></div>
                 </div>
+                <p class="guest-note guest-only hidden">
+                    Результат не сохранён. <a href="#" onclick="exitGuest(true)">Зарегистрируйтесь</a>, чтобы следить за прогрессом.
+                </p>
                 <div class="result-buttons">
                     <button class="btn btn-secondary" onclick="restartTest()">Пройти заново</button>
                     <button class="btn btn-primary" onclick="showPage('home', document.querySelectorAll('.nav-tab')[0])">На главную</button>
