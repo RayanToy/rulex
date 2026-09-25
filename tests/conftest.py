@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 os.environ["RULEX_DATA_DIR"] = tempfile.mkdtemp(prefix="rulex-tests-")
+# Банк вопросов тесты наполняют сами; готовый набор для демо не грузится.
+os.environ["RULEX_SEED_BANK"] = ""
 # Генератор в этих тестах не вызывается, но конструктор требует ключ.
 os.environ.setdefault("ANTHROPIC_API_KEY", "tests-placeholder")
 

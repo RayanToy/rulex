@@ -1,0 +1,21 @@
+# Деплой на Amvera: образ собирается по Dockerfile.
+#
+# Прежний конфиг был удалён как сломанный: он объявлял тома в формате,
+# которого Amvera не понимает, а в последней версии тома не было вовсе —
+# база стиралась при каждом передеплое. Постоянное хранилище задаётся
+# одной строкой persistenceMount.
+meta:
+  environment: docker
+  toolchain:
+    name: docker
+
+build:
+  dockerfile: Dockerfile
+
+run:
+  # uvicorn слушает 8000 (CMD в Dockerfile)
+  containerPort: 8000
+  # База SQLite лежит в RULEX_DATA_DIR=/app/var — этот каталог и есть
+  # постоянное хранилище; банк вопросов для демо загружается в него при
+  # первом старте из data/demo_questions.json
+  persistenceMount: /app/var

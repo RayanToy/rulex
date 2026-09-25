@@ -1,4 +1,6 @@
 """Регистрация, вход, выход."""
+import os
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -17,6 +19,11 @@ from app.core.security import (
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+# Становится ли первый зарегистрированный администратором. Удобно
+# локально, но на публичном экземпляре им стал бы случайный посетитель,
+# поэтому в Docker-образе это выключено (RULEX_FIRST_USER_ADMIN=0).
+FIRST_USER_ADMIN = (os.getenv("RULEX_FIRST_USER_ADMIN") or "1").strip().lower() not in {"0", "false", "no"}
+
 
 @router.post("/register")
 async def register(data: UserRegister):
@@ -31,7 +38,8 @@ async def register(data: UserRegister):
         # иначе учительские эндпоинты недоступны никому и вопросы
         # нечем наполнять. Дальнейших админов назначают через
         # scripts/make_admin.py.
-        first_user = (await session.execute(select(User.id).limit(1))).first() is None
+        first_user = FIRST_USER_ADMIN and (
+            (await session.execute(select(User.id).limit(1))).first() is None)
 
         user = User(
             username=data.username,

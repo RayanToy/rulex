@@ -1,0 +1,3 @@
+# Скрипты оболочки — всегда с LF: с CRLF, которые git на Windows ставит
+# при checkout, точка входа Docker-образа падает с «/bin/sh^M: not found»
+*.sh text eol=lf

@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from app import PROJECT_ROOT  # noqa: E402
 from app.api import assessment, auth, pages, questions  # noqa: E402
 from app.core.database import migrate  # noqa: E402
+from app.core.seed import seed_path, seed_question_bank  # noqa: E402
+from app.services.generation.console import log  # noqa: E402
 from app.services.wordlists import get_word_manager  # noqa: E402
 
 
@@ -31,6 +33,10 @@ async def lifespan(_app: FastAPI):
     # Миграции Alembic вместо create_all: тот не умеет менять уже
     # существующие таблицы. Синхронные — поэтому в потоке.
     await asyncio.to_thread(migrate)
+    # Пустой банк наполняется готовым набором: демо работает без ключа модели
+    seeded = await seed_question_bank(seed_path())
+    if seeded:
+        log(f"[OK] Банк вопросов наполнен готовым набором: {seeded}")
     # Словари прогреваются при старте, а не на первом запросе: чтение
     # ~12.5 МБ CSV занимает около 0.9 с, и в обработчике это блокировало
     # event loop, подвешивая сервер для всех остальных клиентов.

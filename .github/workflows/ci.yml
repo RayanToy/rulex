@@ -29,3 +29,34 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ci-placeholder
         run: pytest
+
+  docker:
+    # Образ — то, что уходит на Amvera. Проверяется так, как он там живёт:
+    # постоянное хранилище смонтировано от root, контейнер перезапускается,
+    # база и банк вопросов переживают перезапуск.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Сборка образа
+        run: docker build -t rulex .
+
+      - name: Запуск с хранилищем от root
+        run: |
+          sudo mkdir -p /tmp/rulex-var
+          docker run -d --name rulex -p 8000:8000 -v /tmp/rulex-var:/app/var rulex
+
+      - name: Проверка экземпляра
+        run: python3 scripts/smoke_deploy.py http://localhost:8000 --register
+
+      - name: Приложение работает не от root
+        run: test "$(docker top rulex -o uid | tail -n +2 | sort -u)" = "1000"
+
+      - name: Перезапуск — данные на месте, банк не задублирован
+        run: |
+          docker restart rulex
+          python3 scripts/smoke_deploy.py http://localhost:8000 --login
+
+      - name: Журнал контейнера
+        if: always()
+        run: docker logs rulex
